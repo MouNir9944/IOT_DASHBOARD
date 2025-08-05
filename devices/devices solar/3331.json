@@ -1,0 +1,14 @@
+{
+  "sensorId": "3331",
+  "type": "solar",
+  "hardwareVersion": "1.5.0",
+  "softwareVersion": "1.2.0",
+  "productNumber": "SOL-PRO-1001",
+  "manufacturer": "GreenTech Solar",
+  "production": 0.0,
+  "powerOutput": 0.0,
+  "irradiance": 0.0,
+  "panelTemperature": 22.0,
+  "timestamp": 1752013588107,
+  "totalProduction": 0.0
+}

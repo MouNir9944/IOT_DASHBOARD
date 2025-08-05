@@ -1,0 +1,13 @@
+{
+  "sensorId": "2221",
+  "type": "gas",
+  "hardwareVersion": "1.5.0",
+  "softwareVersion": "1.0.3",
+  "productNumber": "GAS-SENSOR-2222",
+  "manufacturer": "GasTech Instruments",
+  "consumption": 0.7729000000000014,
+  "flowRate": 0.17,
+  "pressure": 1.79,
+  "temperature": 29.6,
+  "timestamp": 1752013674345
+}

@@ -1,0 +1,20 @@
+{
+  "name": "backend_data_manger",
+  "version": "1.0.0",
+  "main": "servermqtt.js",
+  "type": "module",
+  "scripts": {
+    "start": "node servermqtt.js",
+    "dev": "nodemon servermqtt.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "dotenv": "^17.0.1",
+    "mongoose": "^8.16.1",
+    "mqtt": "^5.13.2"
+  }
+}

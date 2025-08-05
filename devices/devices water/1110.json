@@ -1,0 +1,13 @@
+{
+  "deviceId": "1110",
+  "type": "water",
+  "hardwareVersion": "1.5.0",
+  "softwareVersion": "1.0.0",
+  "productNumber": "WATER-SENSOR-1111",
+  "manufacturer": "AquaTech Solutions",
+  "consumption": 0,
+  "flowRate": 3.84,
+  "pressure": 2.89,
+  "temperature": 26.7,
+  "timestamp": 1754325999931
+}

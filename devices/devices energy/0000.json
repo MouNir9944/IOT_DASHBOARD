@@ -1,0 +1,42 @@
+{
+  "sensorId": "0000",
+  "type": "energy",
+  "systemType": "triphase",
+  "hardwareVersion": "1.5.0",
+  "softwareVersion": "1.0.0",
+  "productNumber": "ENERGY-SENSOR-0000",
+  "manufacturer": "PowerTech Systems",
+  "consumption": 0.04,
+  "totalActivePower": 3209.4,
+  "totalReactivePower": 1059.1,
+  "totalApparentPower": 3379.7,
+  "totalCurrent": 14.8,
+  "phases": {
+    "L1": {
+      "voltage": 229.3,
+      "current": 5.0,
+      "powerFactor": 0.94,
+      "activePower": 1077.7,
+      "reactivePower": 355.6,
+      "apparentPower": 1134.9
+    },
+    "L2": {
+      "voltage": 231.2,
+      "current": 4.9,
+      "powerFactor": 0.93,
+      "activePower": 1053.6,
+      "reactivePower": 347.7,
+      "apparentPower": 1109.5
+    },
+    "L3": {
+      "voltage": 231.6,
+      "current": 4.9,
+      "powerFactor": 0.95,
+      "activePower": 1078.1,
+      "reactivePower": 355.8,
+      "apparentPower": 1135.3
+    }
+  },
+  "frequency": 50.0,
+  "timestamp": 1752013629759
+}

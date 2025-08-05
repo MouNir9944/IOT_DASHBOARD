@@ -9,7 +9,8 @@ const router = express.Router();
 async function reinitializeMQTT() {
   try {
     console.log('🔄 Reinitializing MQTT subscriptions...');
-    const response = await fetch('http://localhost:5001/api/mqtt/reinitialize', {
+    const mqttDataManagerUrl = process.env.MQTT_DATA_MANAGER_URL ;
+    const response = await fetch(`${mqttDataManagerUrl}/api/mqtt/reinitialize`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
     });
@@ -23,10 +24,9 @@ async function reinitializeMQTT() {
     }
   } catch (error) {
     console.error('❌ Could not connect to MQTT Data Manager service:', error.message);
-    console.log('💡 Make sure the MQTT Data Manager is running on port 5001');
+    console.log(`💡 Make sure the MQTT Data Manager is running at ${process.env.MQTT_DATA_MANAGER_URL }`);
   }
 }
-
 // GET /api/device - get all devices across all sites
 router.get('/', async (req, res) => {
   try {

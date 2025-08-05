@@ -9,7 +9,7 @@ dotenv.config();
 const setupDatabase = async () => {
   try {
     // Connect to MongoDB
-    await mongoose.connect("https://iot-dashboard-qa2y.onrender.com", {
+    await mongoose.connect(process.env.MONGO_URI, {
       dbName: 'iot_dashboard',
       maxPoolSize: 10,
     });
@@ -20,20 +20,20 @@ const setupDatabase = async () => {
     
     if (!adminExists) {
       // Create default admin user
-      const hashedPassword = await bcrypt.hash('admin123', 10);
+      const hashedPassword = await bcrypt.hash('123456789', 10);
       
       const adminUser = new User({
-        name: 'Admin User',
-        email: 'admin@iotdashboard.com',
+        name: 'Super Admin User',
+        email: 'mounir.mmahroug@gmail.com',
         password: hashedPassword,
-        role: 'admin',
+        role: 'superadmin',
         isActive: true
       });
 
       await adminUser.save();
       console.log('✅ Default admin user created');
-      console.log('📧 Email: admin@iotdashboard.com');
-      console.log('🔑 Password: admin123');
+      console.log('📧 Email: mounir.mmahroug@gmail.com'); 
+      console.log('🔑 Password: 123456789');
     } else {
       console.log('ℹ️ Admin user already exists');
     }
@@ -42,20 +42,20 @@ const setupDatabase = async () => {
     const testUserExists = await User.findOne({ email: 'test@example.com' });
     
     if (!testUserExists) {
-      const hashedPassword = await bcrypt.hash('password123', 10);
+      const hashedPassword = await bcrypt.hash('123456789', 10);
       
       const testUser = new User({
         name: 'Test User',
-        email: 'test@example.com',
+        email: 'mounir.mmahrou2@gmail.com',
         password: hashedPassword,
-        role: 'user',
+        role: 'admin',
         isActive: true
       });
 
       await testUser.save();
       console.log('✅ Test user created');
-      console.log('📧 Email: test@example.com');
-      console.log('🔑 Password: password123');
+      console.log('📧 Email: mounir.mmahrou2@gmail.com');  
+      console.log('🔑 Password: 123456789');
     } else {
       console.log('ℹ️ Test user already exists');
     }

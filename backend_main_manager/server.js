@@ -81,7 +81,8 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Database connection
 const connectDB = async () => {
   try {
-    await mongoose.connect("mongodb://localhost:27017", {
+    const mongoUri = process.env.MONGO_URI || "mongodb://localhost:27017";
+    await mongoose.connect(mongoUri, {
       dbName: 'iot_dashboard',
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,
@@ -90,6 +91,10 @@ const connectDB = async () => {
     console.log('✅ MongoDB Connected Successfully');
   } catch (error) {
     console.error('❌ MongoDB Connection Error:', error.message);
+    console.log('💡 To fix this issue:');
+    console.log('   1. Install MongoDB locally: https://docs.mongodb.com/manual/installation/');
+    console.log('   2. Or use MongoDB Atlas: https://www.mongodb.com/atlas');
+    console.log('   3. Set MONGO_URI environment variable');
     process.exit(1);
   }
 };

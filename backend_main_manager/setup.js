@@ -9,7 +9,7 @@ dotenv.config();
 const setupDatabase = async () => {
   try {
     // Connect to MongoDB
-    await mongoose.connect("mongodb://localhost:27017", {
+    await mongoose.connect("https://iot-dashboard-qa2y.onrender.com", {
       dbName: 'iot_dashboard',
       maxPoolSize: 10,
     });

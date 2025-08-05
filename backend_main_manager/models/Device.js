@@ -56,7 +56,7 @@ const deviceSchema = new mongoose.Schema({
 // Index for faster queries
 deviceSchema.index({ siteId: 1 });
 deviceSchema.index({ type: 1 });
-deviceSchema.index({ deviceId: 1 });
+// deviceId field already has unique: true which creates an index automatically
 deviceSchema.index({ status: 1 });
 
 const Device = mongoose.model('Device', deviceSchema);

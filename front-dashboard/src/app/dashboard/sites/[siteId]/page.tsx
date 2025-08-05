@@ -222,7 +222,7 @@ export default function SiteDetailPage() {
     fetchStats('gas', setGasData, setGasLabels);
     // Fetch index values
     const fetchIndex = async (type: string, setter: any) => {
-      const url = `http://localhost:5001/api/site/${siteId}/${type}/index`;
+      const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/site/${siteId}/${type}/index`;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

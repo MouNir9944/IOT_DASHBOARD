@@ -149,7 +149,7 @@ export default function SiteDetailPage() {
 
   // Fetch site info
   useEffect(() => {
-    fetch(`${API_URL}/sites`)
+    fetch(`${API_URL}`)
       .then(res => res.json())
       .then(data => setSites(data))
       .catch(() => setSites([]));
@@ -159,7 +159,7 @@ export default function SiteDetailPage() {
   useEffect(() => {
     if (!siteId) return;
     setLoading(true);
-    fetch(`${API_URL}/sites/${siteId}`)
+    fetch(`${API_URL}/${siteId}`)
       .then(res => {
         if (!res.ok) throw new Error('Site not found');
         return res.json();
@@ -177,7 +177,7 @@ export default function SiteDetailPage() {
   // Helper function to refresh site devices
   const refreshSiteDevices = async () => {
     try {
-      const siteRes = await fetch(`${API_URL}/sites/${siteId}`);
+      const siteRes = await fetch(`${API_URL}/${siteId}`);
       const siteData = await siteRes.json();
       setSite(siteData);
     } catch (error) {
@@ -362,7 +362,7 @@ export default function SiteDetailPage() {
       let res: Response, data: any;
       if (deviceModalMode === 'edit' && editingDevice) {
         // Update device using new device route
-        res = await fetch(`${API_URL}/device/site/${siteId}/${editingDevice.deviceId}`, {   
+        res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/site/${siteId}/${editingDevice.deviceId}`, {   
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -373,7 +373,7 @@ export default function SiteDetailPage() {
         await refreshSiteDevices();
       } else {
         // Create device using new device route
-        res = await fetch(`${API_URL}/device/site/${siteId}`, {
+        res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/site/${siteId}`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -409,7 +409,7 @@ export default function SiteDetailPage() {
     setError('');
     try {
       // Delete device using new device route
-      const res = await fetch(`${API_URL}/device/site/${siteId}/${deviceId}`, { 
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/site/${siteId}/${deviceId}`, { 
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
       });

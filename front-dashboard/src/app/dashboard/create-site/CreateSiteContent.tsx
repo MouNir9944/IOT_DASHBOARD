@@ -7,7 +7,7 @@ import L from 'leaflet';
 import { Map as LeafletMap } from 'leaflet';
 import { useSession } from 'next-auth/react';
 
-const API_URL = 'http://localhost:5000/api/sites';
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
 // Fix default icon issue in Leaflet with React
 const DefaultIcon = L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-icon.png',

@@ -13,7 +13,7 @@ import {
   FireIcon
 } from '@heroicons/react/24/outline';
 
-const API_URL = 'http://localhost:5000/api/users';
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/users';
 
 export default function SettingsPage() {
   const { data: session, status, update } = useSession();

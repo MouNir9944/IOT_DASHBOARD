@@ -87,14 +87,14 @@ interface DeviceStatsResponse {
   data: DeviceStatsDataPoint[];
 }
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
 
 const timePeriods = [
   { label: '7d', value: '7d', granularity: 'day' },
   { label: '30d', value: '30d', granularity: 'day' },
   { label: 'Custom', value: 'custom', granularity: 'day' }
 ];
-const SITES_API_URL = 'http://localhost:5000/api/sites';
+const SITES_API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
 
 // Add debugging info
 console.log('🔧 API Configuration:', { API_URL, SITES_API_URL });

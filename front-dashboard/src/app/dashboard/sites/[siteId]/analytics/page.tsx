@@ -46,7 +46,7 @@ export default function SiteAnalyticsPage() {
   const [compareData, setCompareData] = useState<any[]>([]);
   const [deviceOptions, setDeviceOptions] = useState<any[]>([]);          
   const [selectedDevices, setSelectedDevices] = useState<string[]>([]);
-  const API_URL = 'http://localhost:5000/api';
+  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
   // Fetch site name
   useEffect(() => {
     async function fetchSite() {

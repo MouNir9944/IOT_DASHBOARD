@@ -18,7 +18,7 @@ import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import TextField from '@mui/material/TextField';
 import { BarChart } from '@mui/x-charts/BarChart';
 
-const API_URL = 'http://localhost:5000/api';
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
 
 const timePeriods = [
   { label: '7d', value: '7d', granularity: 'day' },

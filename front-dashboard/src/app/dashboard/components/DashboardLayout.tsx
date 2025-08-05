@@ -19,7 +19,7 @@ interface DashboardLayoutProps {
   user: User;
 }
 
-const API_URL = 'http://localhost:5000/api/sites';
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
 
 export default function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const [sites, setSites] = useState<any[]>([]);

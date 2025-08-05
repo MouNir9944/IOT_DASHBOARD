@@ -18,6 +18,7 @@ import deviceRoutes from './routes/device.js';
 // Load environment variables
 dotenv.config();
 
+
 const app = express();
 
 // Create HTTP server and Socket.IO server
@@ -60,7 +61,7 @@ app.use(helmet());
 
 // CORS configuration for frontend
 app.use(cors({
-  origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+  origin: process.env.CORS_ORIGIN,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -81,7 +82,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Database connection
 const connectDB = async () => {
   try {
-    const mongoUri = process.env.MONGO_URI || "mongodb://localhost:27017";
+    const mongoUri = process.env.MONGO_URI ;
     await mongoose.connect(mongoUri, {
       dbName: 'iot_dashboard',
       maxPoolSize: 10,
@@ -89,18 +90,24 @@ const connectDB = async () => {
       socketTimeoutMS: 45000,
     });
     console.log('✅ MongoDB Connected Successfully');
+    return true;
   } catch (error) {
     console.error('❌ MongoDB Connection Error:', error.message);
     console.log('💡 To fix this issue:');
     console.log('   1. Install MongoDB locally: https://docs.mongodb.com/manual/installation/');
     console.log('   2. Or use MongoDB Atlas: https://www.mongodb.com/atlas');
     console.log('   3. Set MONGO_URI environment variable');
-    process.exit(1);
+    console.log('');
+    console.log('⚠️  Server will start without database connection. Some features may not work.');
+    return false;
   }
 };
 
 // Connect to database
-connectDB();
+let dbConnected = false;
+connectDB().then(connected => {
+  dbConnected = connected;
+});
 
 // MQTT Client Setup
 let mqttClient = null;
@@ -108,7 +115,7 @@ let deviceMap = {};
 let topics = [];
 
 // MQTT connection function
-function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com') {
+function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
   console.log('🚀 Connecting to MQTT broker:', brokerUrl);
   
   mqttClient = mqtt.connect(brokerUrl, {
@@ -265,6 +272,12 @@ mongoose.connection.once('open', () => {
   setTimeout(initializeMQTTSubscriptions, 2000); // Small delay to ensure models are loaded
 });
 
+// Handle database connection errors gracefully
+mongoose.connection.on('error', (error) => {
+  console.error('❌ MongoDB connection error:', error.message);
+  dbConnected = false;
+});
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/sites', sitesRoutes);
@@ -278,7 +291,11 @@ app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
     message: 'Server is running',
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    database: {
+      connected: dbConnected,
+      status: dbConnected ? 'connected' : 'disconnected'
+    }
   });
 });
 
@@ -344,10 +361,10 @@ app.use((error, req, res, next) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`📡 Environment: ${process.env.NODE_ENV }`);
   console.log(`🔗 Health check: http://localhost:${PORT}/api/health`);
   console.log(`🔌 WebSocket server ready for connections`);
   console.log(`📊 Available endpoints:`);
@@ -362,7 +379,7 @@ server.listen(PORT, () => {
 
 // Self-ping mechanism to keep server running when deployed on Render
 const pingInterval = setInterval(() => {
-  const baseUrl = process.env.DEPLOYED_URL || `http://localhost:${PORT}`;
+  const baseUrl = process.env.DEPLOYED_URL ;
   const url = `${baseUrl}/ping`;
   
   console.log(`🔄 Self-pinging Main Server at ${url}...`);

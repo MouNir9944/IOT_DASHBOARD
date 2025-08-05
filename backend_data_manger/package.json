@@ -19,5 +19,8 @@
     "mongoose": "^8.16.1",
     "mqtt": "^5.13.2",
     "node-fetch": "^3.3.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
   }
 }

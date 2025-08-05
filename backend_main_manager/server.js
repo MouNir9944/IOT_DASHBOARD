@@ -103,7 +103,7 @@ let deviceMap = {};
 let topics = [];
 
 // MQTT connection function
-function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://162.19.25.155') {
+function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com') {
   console.log('🚀 Connecting to MQTT broker:', brokerUrl);
   
   mqttClient = mqtt.connect(brokerUrl, {

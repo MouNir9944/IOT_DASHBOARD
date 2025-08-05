@@ -2,6 +2,7 @@ import express from 'express';
 import mongoose from 'mongoose';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import fetch from 'node-fetch';
 import mqttClient from './routes/mqttClient.js';
 import { Site, Device } from './models/Site.js';
 

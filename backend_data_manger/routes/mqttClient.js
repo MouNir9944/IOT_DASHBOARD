@@ -5,7 +5,7 @@ import mongoose from 'mongoose';
 import dotenv from 'dotenv';
 import { Site, Device } from '../models/Site.js';
 
-dotenv.config({ path: '.env.local' }); // This will load .env.local if present
+dotenv.config(); // Load environment variables from .env file
 
 let client;
 let topics = [];

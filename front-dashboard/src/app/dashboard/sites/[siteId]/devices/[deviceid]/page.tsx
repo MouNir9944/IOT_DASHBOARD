@@ -1197,7 +1197,7 @@ export default function DeviceDetailPage() {
     console.log('🔌 Initializing WebSocket connection for device:', deviceId);
 
     // Initialize WebSocket connection
-    const newSocket = io('http://localhost:5000', {
+    const newSocket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5000', {
       transports: ['websocket', 'polling']
     });
 

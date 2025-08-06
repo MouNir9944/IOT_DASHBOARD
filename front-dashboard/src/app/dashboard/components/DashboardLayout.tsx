@@ -23,7 +23,12 @@ const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites'; // TODO: cha
 
 export default function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const [sites, setSites] = useState<any[]>([]);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const { data: session } = useSession();
+
+  const toggleSidebar = () => {
+    setSidebarOpen(!sidebarOpen);
+  };
 
   useEffect(() => {
     if (!session?.user) return;
@@ -52,11 +57,12 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
   }, [session]);
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
-      <Sidebar sites={sites} />
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden lg:ml-0">
-        <Header user={user} />
-        <main className="flex-1 overflow-y-auto">
+    <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+      <Header user={user} onSidebarToggle={toggleSidebar} />
+      <div className="flex flex-1">
+        <Sidebar sites={sites} onSidebarToggle={toggleSidebar} sidebarOpen={sidebarOpen} />
+
+        <main className="flex-1">
           {children}
         </main>
       </div>

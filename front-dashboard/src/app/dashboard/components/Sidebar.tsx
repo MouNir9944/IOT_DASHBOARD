@@ -39,13 +39,20 @@ const typeIconUrl: Record<string, string> = {
 };
 const defaultIconUrl = 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-icon.png';
 
-export default function Sidebar({ sites }: { sites?: any[] }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+interface SidebarProps {
+  sites?: any[];
+  onSidebarToggle?: () => void;
+  sidebarOpen?: boolean;
+}
+
+export default function Sidebar({ sites, onSidebarToggle, sidebarOpen = false }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const pathname = usePathname();
 
   const toggleSidebar = () => {
-    setSidebarOpen(!sidebarOpen);
+    if (onSidebarToggle) {
+      onSidebarToggle();
+    }
   };
 
   const toggleCollapse = () => {
@@ -81,18 +88,6 @@ export default function Sidebar({ sites }: { sites?: any[] }) {
           )}
           
           <div className="flex items-center gap-2">
-            {/* Collapse toggle button - only show on desktop */}
-            <button
-              onClick={toggleCollapse}
-              className="hidden lg:flex p-2 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-            >
-              {isCollapsed ? (
-                <ChevronRightIcon className="w-5 h-5" />
-              ) : (
-                <ChevronLeftIcon className="w-5 h-5" />
-              )}
-            </button>
-            
             {/* Mobile close button */}
             <button
               onClick={toggleSidebar}
@@ -107,11 +102,24 @@ export default function Sidebar({ sites }: { sites?: any[] }) {
           {/* Navigation */}
           <nav className="flex-1 px-2 py-4 sm:py-6 space-y-1 sm:space-y-2 overflow-y-auto">
             <div>
-              {!isCollapsed && (
-                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 sm:mb-4 px-2">
-                  Main Navigation
-                </h3>
-              )}
+              <div className="flex items-center justify-between mb-3 sm:mb-4 px-2">
+                {!isCollapsed && (
+                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Main Navigation
+                  </h3>
+                )}
+                {/* Collapse toggle button - only show on desktop */}
+                <button
+                  onClick={toggleCollapse}
+                  className="hidden lg:flex p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                >
+                  {isCollapsed ? (
+                    <ChevronRightIcon className="w-4 h-4" />
+                  ) : (
+                    <ChevronLeftIcon className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
               <div className="space-y-1">
                 {navigation.map((item) => {
                   const isActive = pathname === item.href;
@@ -123,7 +131,7 @@ export default function Sidebar({ sites }: { sites?: any[] }) {
                         isActive
                           ? 'bg-blue-100 text-blue-700'
                           : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                      }`}
+                      } ${isCollapsed ? 'justify-center' : ''}`}
                       title={isCollapsed ? item.name : undefined}
                     >
                       <item.icon
@@ -138,19 +146,17 @@ export default function Sidebar({ sites }: { sites?: any[] }) {
               </div>
             </div>
             <div className="mt-6 sm:mt-8">
-              <div>
-                {isCollapsed ? (
-                  <div className="flex flex-col items-center gap-4">
-                    {/* Only icons for admin actions when collapsed */}
-                    {/* Example: */}
-                    <button title="Admin Action" className="p-2 rounded hover:bg-gray-200">
-                      <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm1 12.93V17h-2v-2.07A6.002 6.002 0 014 11H2v-2h2a6.002 6.002 0 015-5.93V3h2v2.07A6.002 6.002 0 0116 9h2v2h-2a6.002 6.002 0 01-5 5.93z" /></svg>
-                    </button>
-                  </div>
-                ) : (
-                  <AdminActions />
-                )}
-              </div>
+              {isCollapsed ? (
+                <div className="flex flex-col items-center gap-4">
+                  {/* Only icons for admin actions when collapsed */}
+                  {/* Example: */}
+                  <button title="Admin Action" className="p-2 rounded hover:bg-gray-200">
+                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm1 12.93V17h-2v-2.07A6.002 6.002 0 014 11H2v-2h2a6.002 6.002 0 015-5.93V3h2v2.07A6.002 6.002 0 0116 9h2v2h-2a6.002 6.002 0 01-5 5.93z" /></svg>
+                  </button>
+                </div>
+              ) : (
+                <AdminActions />
+              )}
             </div>
             {/* SITES LIST (replaces Device Categories) */}
                 <div className="mt-6 sm:mt-8">
@@ -183,17 +189,6 @@ export default function Sidebar({ sites }: { sites?: any[] }) {
           </nav>
         </div>
       </div>
-
-      {/* Mobile menu button */}
-      <div className="lg:hidden">
-        <button
-          onClick={toggleSidebar}
-          className="fixed top-3 sm:top-4 left-3 sm:left-4 z-50 p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 bg-white shadow-lg"
-        >
-          <Bars3Icon className="w-5 h-5 sm:w-6 sm:h-6" />
-        </button>
-      </div>
-
     </>
   );
 } 

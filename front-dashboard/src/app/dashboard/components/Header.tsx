@@ -5,7 +5,8 @@ import { signOut } from 'next-auth/react';
 import { 
   BellIcon,
   UserCircleIcon,
-  ArrowRightOnRectangleIcon
+  ArrowRightOnRectangleIcon,
+  Bars3Icon
 } from '@heroicons/react/24/outline';
 
 interface User {
@@ -16,9 +17,10 @@ interface User {
 
 interface HeaderProps {
   user: User;
+  onSidebarToggle?: () => void;
 }
 
-export default function Header({ user }: HeaderProps) {
+export default function Header({ user, onSidebarToggle }: HeaderProps) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -54,9 +56,19 @@ export default function Header({ user }: HeaderProps) {
     <header className="bg-white shadow-sm border-b border-gray-200 px-3 sm:px-4 md:px-6 py-3 sm:py-4 z-10">
       <div className="flex items-center justify-between">
         {/* Left side */}
-        <div className="flex-1 min-w-0 ml-12 sm:ml-0">
-          <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 truncate">Dashboard</h1>
-          <p className="text-xs sm:text-sm text-gray-600 truncate">Welcome back, {user.name || user.email}</p>
+        <div className="flex items-center flex-1 min-w-0">
+          {/* Mobile sidebar toggle button */}
+          <button
+            onClick={onSidebarToggle}
+            className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 mr-3"
+          >
+            <Bars3Icon className="w-5 h-5 sm:w-6 sm:h-6" />
+          </button>
+          
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 truncate">Dashboard</h1>
+            <p className="text-xs sm:text-sm text-gray-600 truncate">Welcome back, {user.name || user.email}</p>
+          </div>
         </div>
 
         {/* Right side */}

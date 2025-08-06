@@ -34,19 +34,24 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
     if (!session?.user) return;
     const fetchSites = async () => {
       let url = API_URL;
-      if (session.user.role !== 'superadmin') {
-        url = `${API_URL}/user/${session.user.id}`;
+      
+      // Add query parameters for filtering
+      const params = new URLSearchParams();
+      if (session.user.role) {
+        params.append('role', session.user.role);
       }
+      if (session.user.role === 'admin' && session.user.id) {
+        params.append('createdBy', session.user.id);
+      }
+      
+      if (params.toString()) {
+        url += `?${params.toString()}`;
+      }
+      
       const res = await fetch(url);
       const data = await res.json();
       
-      // Handle error response - if user not found, try fetching all sites
-      if (data.error && data.error.includes('User not found') && session.user.role !== 'superadmin') {
-        console.log('User not found, fetching all sites instead');
-        const allSitesRes = await fetch(API_URL);
-        const allSitesData = await allSitesRes.json();
-        setSites(Array.isArray(allSitesData) ? allSitesData : []);
-      } else if (data.error) {
+      if (data.error) {
         console.error('Error fetching sites:', data);
         setSites([]);
       } else {
@@ -60,7 +65,12 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       <Header user={user} onSidebarToggle={toggleSidebar} />
       <div className="flex flex-1">
-        <Sidebar sites={sites} onSidebarToggle={toggleSidebar} sidebarOpen={sidebarOpen} />
+        <Sidebar 
+          sites={sites} 
+          onSidebarToggle={toggleSidebar} 
+          sidebarOpen={sidebarOpen} 
+          userRole={user.role}
+        />
 
         <main className="flex-1">
           {children}

@@ -26,7 +26,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
   { name: 'Analytics', href: '/dashboard/analytics', icon: ChartBarIcon },
   { name: 'Notifications', href: '/dashboard/notifications', icon: BellIcon },
-  { name: 'Settings', href: '/dashboard/settings', icon: CogIcon },
+  { name: 'Profile', href: '/dashboard/settings', icon: CogIcon },
 ];
 
 // Icon URLs by type (same as on the map)
@@ -43,9 +43,10 @@ interface SidebarProps {
   sites?: any[];
   onSidebarToggle?: () => void;
   sidebarOpen?: boolean;
+  userRole?: string;
 }
 
-export default function Sidebar({ sites, onSidebarToggle, sidebarOpen = false }: SidebarProps) {
+export default function Sidebar({ sites, onSidebarToggle, sidebarOpen = false, userRole }: SidebarProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const pathname = usePathname();
 
@@ -57,6 +58,35 @@ export default function Sidebar({ sites, onSidebarToggle, sidebarOpen = false }:
 
   const toggleCollapse = () => {
     setIsCollapsed(!isCollapsed);
+  };
+
+  // Filter navigation items based on user role
+  const getFilteredNavigation = () => {
+    if (userRole === 'installator' || userRole === 'user') {
+      // Installators and regular users see navigation items but they're disabled, except Profile
+      return navigation.map(item => ({
+        ...item,
+        disabled: item.name === 'Profile' ? false : true
+      }));
+    }
+    return navigation.map(item => ({
+      ...item,
+      disabled: false
+    }));
+  };
+
+  const filteredNavigation = getFilteredNavigation();
+
+  // Handle navigation click for installator and user roles
+  const handleNavigationClick = (e: React.MouseEvent, item: any) => {
+    if ((userRole === 'installator' || userRole === 'user') && item.disabled) {
+      e.preventDefault();
+      // Redirect to first site if available
+      if (sites && sites.length > 0) {
+        window.location.href = `/dashboard/sites/${sites[0]._id}`;
+      }
+    }
+    // Profile is accessible to all roles, no redirection needed
   };
 
   return (
@@ -102,42 +132,45 @@ export default function Sidebar({ sites, onSidebarToggle, sidebarOpen = false }:
           {/* Navigation */}
           <nav className="flex-1 px-2 py-4 sm:py-6 space-y-1 sm:space-y-2 overflow-y-auto">
             <div>
-              <div className="flex items-center justify-between mb-3 sm:mb-4 px-2">
-                {!isCollapsed && (
-                  <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                    Main Navigation
-                  </h3>
-                )}
-                {/* Collapse toggle button - only show on desktop */}
-                <button
-                  onClick={toggleCollapse}
-                  className="hidden lg:flex p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-                >
-                  {isCollapsed ? (
-                    <ChevronRightIcon className="w-4 h-4" />
-                  ) : (
-                    <ChevronLeftIcon className="w-4 h-4" />
+              {filteredNavigation.length > 0 && (
+                <div className="flex items-center justify-between mb-3 sm:mb-4 px-2">
+                  {!isCollapsed && (
+                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                      Main Navigation
+                    </h3>
                   )}
-                </button>
-              </div>
+                  {/* Collapse toggle button - only show on desktop */}
+                  <button
+                    onClick={toggleCollapse}
+                    className="hidden lg:flex p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                  >
+                    {isCollapsed ? (
+                      <ChevronRightIcon className="w-4 h-4" />
+                    ) : (
+                      <ChevronLeftIcon className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
+              )}
               <div className="space-y-1">
-                {navigation.map((item) => {
+                {filteredNavigation.map((item) => {
                   const isActive = pathname === item.href;
                   return (
                     <Link
                       key={item.name}
                       href={item.href}
+                      onClick={(e) => handleNavigationClick(e, item)}
                       className={`group flex items-center px-2 sm:px-3 py-2 sm:py-2 text-sm font-medium rounded-md transition-colors ${
                         isActive
                           ? 'bg-blue-100 text-blue-700'
                           : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                      } ${isCollapsed ? 'justify-center' : ''}`}
-                      title={isCollapsed ? item.name : undefined}
+                      } ${isCollapsed ? 'justify-center' : ''} ${item.disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      title={isCollapsed ? (item.disabled ? `${item.name} - Access restricted for ${userRole === 'installator' ? 'installators' : 'users'}` : item.name) : undefined}
                     >
                       <item.icon
                         className={`h-5 w-5 ${
                           isActive ? 'text-blue-500' : 'text-gray-400 group-hover:text-gray-500'
-                        } ${isCollapsed ? 'mx-auto' : 'mr-3'}`}
+                        } ${isCollapsed ? 'mx-auto' : 'mr-3'} ${item.disabled ? 'opacity-50' : ''}`}
                       />
                       {!isCollapsed && <span className="truncate">{item.name}</span>}
                     </Link>
@@ -146,16 +179,20 @@ export default function Sidebar({ sites, onSidebarToggle, sidebarOpen = false }:
               </div>
             </div>
             <div className="mt-6 sm:mt-8">
-              {isCollapsed ? (
-                <div className="flex flex-col items-center gap-4">
-                  {/* Only icons for admin actions when collapsed */}
-                  {/* Example: */}
-                  <button title="Admin Action" className="p-2 rounded hover:bg-gray-200">
-                    <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm1 12.93V17h-2v-2.07A6.002 6.002 0 014 11H2v-2h2a6.002 6.002 0 015-5.93V3h2v2.07A6.002 6.002 0 0116 9h2v2h-2a6.002 6.002 0 01-5 5.93z" /></svg>
-                  </button>
-                </div>
-              ) : (
-                <AdminActions />
+              {userRole !== 'installator' && userRole !== 'user' && (
+                <>
+                  {isCollapsed ? (
+                    <div className="flex flex-col items-center gap-4">
+                      {/* Only icons for admin actions when collapsed */}
+                      {/* Example: */}
+                      <button title="Admin Action" className="p-2 rounded hover:bg-gray-200">
+                        <svg width="20" height="20" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16 8 8 0 000-16zm1 12.93V17h-2v-2.07A6.002 6.002 0 014 11H2v-2h2a6.002 6.002 0 015-5.93V3h2v2.07A6.002 6.002 0 0116 9h2v2h-2a6.002 6.002 0 01-5 5.93z" /></svg>
+                      </button>
+                    </div>
+                  ) : (
+                    <AdminActions />
+                  )}
+                </>
               )}
             </div>
             {/* SITES LIST (replaces Device Categories) */}

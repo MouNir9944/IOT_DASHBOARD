@@ -11,7 +11,8 @@ import {
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
   FireIcon,
-  CalendarIcon
+  CalendarIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import { DateTimePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -93,6 +94,85 @@ export default function SiteDetailPage() {
       changeType: percent >= 0 ? 'increase' : 'decrease',
     };
   }
+
+  // Calculate statistics for chart analytics
+  const calculateStats = (data: number[], type: string) => {
+    if (!data || data.length === 0) return null;
+    
+    // Filter out zero values to get actual data points
+    const nonZeroData = data.filter(val => val > 0);
+    if (nonZeroData.length === 0) return null;
+    
+    const totalConsumption = nonZeroData.reduce((sum, val) => sum + val, 0);
+    const averagePerDay = nonZeroData.length > 0 ? totalConsumption / nonZeroData.length : 0;
+    const peakConsumption = Math.max(...nonZeroData);
+    const dataPoints = nonZeroData.length;
+    
+    return {
+      totalConsumption: formatValue(type, totalConsumption),
+      averagePerDay: formatValue(type, averagePerDay),
+      peakConsumption: formatValue(type, peakConsumption),
+      dataPoints
+    };
+  };
+
+  // CSV Export function
+  const exportToCSV = () => {
+    const { from, to } = getDateRange();
+    const granularity = getGranularity();
+    
+    // Prepare CSV data
+    const csvData = [];
+    
+    // Add header
+    csvData.push(['Date', 'Energy (kWh)', 'Solar (kWh)', 'Water (m³)', 'Gas (m³)']);
+    
+    // Get the maximum length of all data arrays
+    const maxLength = Math.max(
+      energyLabels.length,
+      solarLabels.length,
+      waterLabels.length,
+      gasLabels.length
+    );
+    
+    // Add data rows (only include rows with actual data)
+    for (let i = 0; i < maxLength; i++) {
+      const date = energyLabels[i] || solarLabels[i] || waterLabels[i] || gasLabels[i];
+      const energy = energyData[i] || 0;
+      const solar = solarData[i] || 0;
+      const water = waterData[i] || 0;
+      const gas = gasData[i] || 0;
+      
+      // Only add row if at least one value is non-zero
+      if (energy > 0 || solar > 0 || water > 0 || gas > 0) {
+        csvData.push([
+          date ? new Date(date).toLocaleDateString('en-US', { 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit' 
+          }) : '',
+          energy.toFixed(3),
+          solar.toFixed(3),
+          water.toFixed(3),
+          gas.toFixed(3)
+        ]);
+      }
+    }
+    
+    // Convert to CSV string
+    const csvContent = csvData.map(row => row.join(',')).join('\n');
+    
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${site.name}_data_${selectedPeriod}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Get date range based on selected period
   const getDateRange = () => {
@@ -296,6 +376,16 @@ export default function SiteDetailPage() {
           >
             Analytics for this Site
           </button>
+          {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && (
+            <button
+              onClick={exportToCSV}
+              className="px-3 py-1 text-sm rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors ml-2 flex items-center gap-1"
+              title="Export data to CSV"
+            >
+              <ArrowDownTrayIcon className="w-4 h-4" />
+              Export CSV
+            </button>
+          )}
         </div>
         {showCustomPicker && (
           <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -455,142 +545,146 @@ export default function SiteDetailPage() {
           </div>
         </div>
         {/* Time Period Selector */}
-        <TimePeriodSelector />
+        {user.role !== 'installator' && <TimePeriodSelector />}
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
-          {/* Energy Stats - Only show if it has data */}
-          {hasData(energyData) && (
-            <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-              <div className="flex items-center">
-                <div className="p-2 sm:p-3 rounded-lg bg-blue-500">
-                  <BoltIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+        {user.role !== 'installator' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
+            {/* Energy Stats - Only show if it has data */}
+            {hasData(energyData) && (
+              <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                <div className="flex items-center">
+                  <div className="p-2 sm:p-3 rounded-lg bg-blue-500">
+                    <BoltIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                  </div>
+                  <div className="ml-3 sm:ml-4 flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Energy Consumption</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                      {formatValue('energy', energyIndex !== null ? energyIndex : energyData.reduce((a, b) => a + b, 0))}
+                    </p>
+                  </div>
                 </div>
-                <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Energy Consumption</p>
-                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
-                    {formatValue('energy', energyIndex !== null ? energyIndex : energyData.reduce((a, b) => a + b, 0))}
-                  </p>
+                <div className="mt-3 sm:mt-4 flex items-center">
+                  {energyChange.changeType === 'increase' ? (
+                    <ArrowTrendingUpIcon className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
+                  ) : (
+                    <ArrowTrendingDownIcon className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
+                  )}
+                  <span className={`ml-1 text-xs sm:text-sm font-medium ${
+                    energyChange.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {energyChange.change}
+                  </span>
+                  <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last period</span>
                 </div>
               </div>
-              <div className="mt-3 sm:mt-4 flex items-center">
-                {energyChange.changeType === 'increase' ? (
-                  <ArrowTrendingUpIcon className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
-                ) : (
-                  <ArrowTrendingDownIcon className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
-                )}
-                <span className={`ml-1 text-xs sm:text-sm font-medium ${
-                  energyChange.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {energyChange.change}
-                </span>
-                <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last period</span>
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* Solar Stats - Only show if it has data */}
-          {hasData(solarData) && (
-            <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-              <div className="flex items-center">
-                <div className="p-2 sm:p-3 rounded-lg bg-green-500">
-                  <SunIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            {/* Solar Stats - Only show if it has data */}
+            {hasData(solarData) && (
+              <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                <div className="flex items-center">
+                  <div className="p-2 sm:p-3 rounded-lg bg-green-500">
+                    <SunIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                  </div>
+                  <div className="ml-3 sm:ml-4 flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Solar Production</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                      {formatValue('solar', solarIndex !== null ? solarIndex : solarData.reduce((a, b) => a + b, 0))}
+                    </p>
+                  </div>
                 </div>
-                <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Solar Production</p>
-                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
-                    {formatValue('solar', solarIndex !== null ? solarIndex : solarData.reduce((a, b) => a + b, 0))}
-                  </p>
+                <div className="mt-3 sm:mt-4 flex items-center">
+                  {solarChange.changeType === 'increase' ? (
+                    <ArrowTrendingUpIcon className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
+                  ) : (
+                    <ArrowTrendingDownIcon className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
+                  )}
+                  <span className={`ml-1 text-xs sm:text-sm font-medium ${
+                    solarChange.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {solarChange.change}
+                  </span>
+                  <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last period</span>
                 </div>
               </div>
-              <div className="mt-3 sm:mt-4 flex items-center">
-                {solarChange.changeType === 'increase' ? (
-                  <ArrowTrendingUpIcon className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
-                ) : (
-                  <ArrowTrendingDownIcon className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
-                )}
-                <span className={`ml-1 text-xs sm:text-sm font-medium ${
-                  solarChange.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {solarChange.change}
-                </span>
-                <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last period</span>
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* Water Stats - Only show if it has data */}
-          {hasData(waterData) && (
-            <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-              <div className="flex items-center">
-                <div className="p-2 sm:p-3 rounded-lg bg-purple-500">
-                  <CloudIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            {/* Water Stats - Only show if it has data */}
+            {hasData(waterData) && (
+              <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                <div className="flex items-center">
+                  <div className="p-2 sm:p-3 rounded-lg bg-purple-500">
+                    <CloudIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                  </div>
+                  <div className="ml-3 sm:ml-4 flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Water Usage</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                      {formatValue('water', waterIndex !== null ? waterIndex : waterData.reduce((a, b) => a + b, 0))}
+                    </p>
+                  </div>
                 </div>
-                <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Water Usage</p>
-                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
-                    {formatValue('water', waterIndex !== null ? waterIndex : waterData.reduce((a, b) => a + b, 0))}
-                  </p>
+                <div className="mt-3 sm:mt-4 flex items-center">
+                  {waterChange.changeType === 'increase' ? (
+                    <ArrowTrendingUpIcon className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
+                  ) : (
+                    <ArrowTrendingDownIcon className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
+                  )}
+                  <span className={`ml-1 text-xs sm:text-sm font-medium ${
+                    waterChange.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {waterChange.change}
+                  </span>
+                  <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last period</span>
                 </div>
               </div>
-              <div className="mt-3 sm:mt-4 flex items-center">
-                {waterChange.changeType === 'increase' ? (
-                  <ArrowTrendingUpIcon className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
-                ) : (
-                  <ArrowTrendingDownIcon className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
-                )}
-                <span className={`ml-1 text-xs sm:text-sm font-medium ${
-                  waterChange.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {waterChange.change}
-                </span>
-                <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last period</span>
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* Gas Stats - Only show if it has data */}
-          {hasData(gasData) && (
-            <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-              <div className="flex items-center">
-                <div className="p-2 sm:p-3 rounded-lg bg-red-500">
-                  <FireIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+            {/* Gas Stats - Only show if it has data */}
+            {hasData(gasData) && (
+              <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                <div className="flex items-center">
+                  <div className="p-2 sm:p-3 rounded-lg bg-red-500">
+                    <FireIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                  </div>
+                  <div className="ml-3 sm:ml-4 flex-1 min-w-0">
+                    <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Gas Usage</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                      {formatValue('gas', gasIndex !== null ? gasIndex : gasData.reduce((a, b) => a + b, 0))}
+                    </p>
+                  </div>
                 </div>
-                <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                  <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Gas Usage</p>
-                  <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
-                    {formatValue('gas', gasIndex !== null ? gasIndex : gasData.reduce((a, b) => a + b, 0))}
-                  </p>
+                <div className="mt-3 sm:mt-4 flex items-center">
+                  {gasChange.changeType === 'increase' ? (
+                    <ArrowTrendingUpIcon className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
+                  ) : (
+                    <ArrowTrendingDownIcon className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
+                  )}
+                  <span className={`ml-1 text-xs sm:text-sm font-medium ${
+                    gasChange.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {gasChange.change}
+                  </span>
+                  <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last period</span>
                 </div>
               </div>
-              <div className="mt-3 sm:mt-4 flex items-center">
-                {gasChange.changeType === 'increase' ? (
-                  <ArrowTrendingUpIcon className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
-                ) : (
-                  <ArrowTrendingDownIcon className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
-                )}
-                <span className={`ml-1 text-xs sm:text-sm font-medium ${
-                  gasChange.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {gasChange.change}
-                </span>
-                <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last period</span>
-              </div>
-            </div>
-          )}
+            )}
 
-          {/* Show message when no stats have data */}
-          {!hasData(energyData) && !hasData(solarData) && !hasData(waterData) && !hasData(gasData) && (
-            <div className="col-span-full bg-white rounded-lg shadow p-8 text-center">
-              <BoltIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No Devices Connected</h3>
-              <p className="text-gray-500">
-                No devices are currently connected. Please check your device connections and ensure they are properly configured.
-              </p>
-            </div>
-          )}
-        </div>
+            {/* Show message when no stats have data */}
+            {!hasData(energyData) && !hasData(solarData) && !hasData(waterData) && !hasData(gasData) && (
+              <div className="col-span-full bg-white rounded-lg shadow p-8 text-center">
+                <BoltIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No Devices Connected</h3>
+                <p className="text-gray-500">
+                  No devices are currently connected. Please check your device connections and ensure they are properly configured.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+
         {/* Charts */}
-        {(() => {
+        {user.role !== 'installator' && (() => {
           // Count how many charts have data
           const chartsWithData = [
             hasData(energyData),
@@ -616,64 +710,264 @@ export default function SiteDetailPage() {
           return (
             <div className={`${gridClasses} gap-4 sm:gap-6`}>
               {/* Energy Chart - Only show if it has data */}
-              {hasData(energyData) && (
-                <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-                  <h4 className="text-sm font-semibold mb-2">Energy Consumption (kWh)</h4>
-                  <BarChart
-                    xAxis={[{ data: energyLabels.map(d => {
-                      const date = new Date(d);
-                      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    }), label: 'Date' }]}
-                    series={[{ data: energyData, label: 'Energy', color: '#3B82F6' }]}
-                    height={chartsWithData === 1 ? 350 : 220} // Taller chart when it's the only one
-                  />
-                </div>
-              )}
+              {hasData(energyData) && (() => {
+                const energyStats = calculateStats(energyData, 'energy');
+                return (
+                  <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                    <h4 className="text-sm font-semibold mb-2">Energy Consumption (kWh)</h4>
+                    <BarChart
+                      xAxis={[{ data: energyLabels.map(d => {
+                        const date = new Date(d);
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      }), label: 'Date' }]}
+                      series={[{ data: energyData, label: 'Energy', color: '#3B82F6' }]}
+                      height={chartsWithData === 1 ? 350 : 220} // Taller chart when it's the only one
+                    />
+                    
+                    {/* Chart Analytics */}
+                    {energyStats && (
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="flex justify-between items-center mb-3">
+                          <h5 className="text-sm font-semibold text-gray-900">Chart Analytics</h5>
+                          <div className="text-xs text-gray-500">{energyStats.dataPoints} data points</div>
+                        </div>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <ArrowTrendingUpIcon className="w-4 h-4 text-green-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Total Consumption</h6>
+                            </div>
+                            <div className="text-sm font-bold text-green-600">{energyStats.totalConsumption}</div>
+                            <div className="text-xs text-gray-500">Selected period</div>
+                          </div>
+                          
+                          <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <ChartBarIcon className="w-4 h-4 text-blue-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Average per day</h6>
+                            </div>
+                            <div className="text-sm font-bold text-blue-600">{energyStats.averagePerDay}</div>
+                            <div className="text-xs text-gray-500">Average consumption</div>
+                          </div>
+                          
+                          <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <ArrowTrendingUpIcon className="w-4 h-4 text-purple-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Peak Consumption</h6>
+                            </div>
+                            <div className="text-sm font-bold text-purple-600">{energyStats.peakConsumption}</div>
+                            <div className="text-xs text-gray-500">Highest daily usage</div>
+                          </div>
+                          
+                          <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <CalendarIcon className="w-4 h-4 text-yellow-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Data Points</h6>
+                            </div>
+                            <div className="text-sm font-bold text-yellow-600">{energyStats.dataPoints}</div>
+                            <div className="text-xs text-gray-500">Data periods</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Solar Chart - Only show if it has data */}
-              {hasData(solarData) && (
-                <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-                  <h4 className="text-sm font-semibold mb-2">Solar Production (kWh)</h4>
-                  <BarChart
-                    xAxis={[{ data: solarLabels.map(d => {
-                      const date = new Date(d);
-                      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    }), label: 'Date' }]}
-                    series={[{ data: solarData, label: 'Solar', color: '#22C55E' }]}
-                    height={chartsWithData === 1 ? 350 : 220} // Taller chart when it's the only one
-                  />
-                </div>
-              )}
+              {hasData(solarData) && (() => {
+                const solarStats = calculateStats(solarData, 'solar');
+                return (
+                  <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                    <h4 className="text-sm font-semibold mb-2">Solar Production (kWh)</h4>
+                    <BarChart
+                      xAxis={[{ data: solarLabels.map(d => {
+                        const date = new Date(d);
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      }), label: 'Date' }]}
+                      series={[{ data: solarData, label: 'Solar', color: '#22C55E' }]}
+                      height={chartsWithData === 1 ? 350 : 220} // Taller chart when it's the only one
+                    />
+                    
+                    {/* Chart Analytics */}
+                    {solarStats && (
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="flex justify-between items-center mb-3">
+                          <h5 className="text-sm font-semibold text-gray-900">Chart Analytics</h5>
+                          <div className="text-xs text-gray-500">{solarStats.dataPoints} data points</div>
+                        </div>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <ArrowTrendingUpIcon className="w-4 h-4 text-green-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Total Production</h6>
+                            </div>
+                            <div className="text-sm font-bold text-green-600">{solarStats.totalConsumption}</div>
+                            <div className="text-xs text-gray-500">Selected period</div>
+                          </div>
+                          
+                          <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <ChartBarIcon className="w-4 h-4 text-blue-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Average per day</h6>
+                            </div>
+                            <div className="text-sm font-bold text-blue-600">{solarStats.averagePerDay}</div>
+                            <div className="text-xs text-gray-500">Average production</div>
+                          </div>
+                          
+                          <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <ArrowTrendingUpIcon className="w-4 h-4 text-purple-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Peak Production</h6>
+                            </div>
+                            <div className="text-sm font-bold text-purple-600">{solarStats.peakConsumption}</div>
+                            <div className="text-xs text-gray-500">Highest daily production</div>
+                          </div>
+                          
+                          <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <CalendarIcon className="w-4 h-4 text-yellow-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Data Points</h6>
+                            </div>
+                            <div className="text-sm font-bold text-yellow-600">{solarStats.dataPoints}</div>
+                            <div className="text-xs text-gray-500">Data periods</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Water Chart - Only show if it has data */}
-              {hasData(waterData) && (
-                <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-                  <h4 className="text-sm font-semibold mb-2">Water Usage (m³)</h4>
-                  <BarChart
-                    xAxis={[{ data: waterLabels.map(d => {
-                      const date = new Date(d);
-                      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    }), label: 'Date' }]}
-                    series={[{ data: waterData, label: 'Water', color: '#9333EA' }]}
-                    height={chartsWithData === 1 ? 350 : 220} // Taller chart when it's the only one
-                  />
-                </div>
-              )}
+              {hasData(waterData) && (() => {
+                const waterStats = calculateStats(waterData, 'water');
+                return (
+                  <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                    <h4 className="text-sm font-semibold mb-2">Water Usage (m³)</h4>
+                    <BarChart
+                      xAxis={[{ data: waterLabels.map(d => {
+                        const date = new Date(d);
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      }), label: 'Date' }]}
+                      series={[{ data: waterData, label: 'Water', color: '#9333EA' }]}
+                      height={chartsWithData === 1 ? 350 : 220} // Taller chart when it's the only one
+                    />
+                    
+                    {/* Chart Analytics */}
+                    {waterStats && (
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="flex justify-between items-center mb-3">
+                          <h5 className="text-sm font-semibold text-gray-900">Chart Analytics</h5>
+                          <div className="text-xs text-gray-500">{waterStats.dataPoints} data points</div>
+                        </div>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <ArrowTrendingUpIcon className="w-4 h-4 text-green-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Total Usage</h6>
+                            </div>
+                            <div className="text-sm font-bold text-green-600">{waterStats.totalConsumption}</div>
+                            <div className="text-xs text-gray-500">Selected period</div>
+                          </div>
+                          
+                          <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <ChartBarIcon className="w-4 h-4 text-blue-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Average per day</h6>
+                            </div>
+                            <div className="text-sm font-bold text-blue-600">{waterStats.averagePerDay}</div>
+                            <div className="text-xs text-gray-500">Average usage</div>
+                          </div>
+                          
+                          <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <ArrowTrendingUpIcon className="w-4 h-4 text-purple-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Peak Usage</h6>
+                            </div>
+                            <div className="text-sm font-bold text-purple-600">{waterStats.peakConsumption}</div>
+                            <div className="text-xs text-gray-500">Highest daily usage</div>
+                          </div>
+                          
+                          <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <CalendarIcon className="w-4 h-4 text-yellow-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Data Points</h6>
+                            </div>
+                            <div className="text-sm font-bold text-yellow-600">{waterStats.dataPoints}</div>
+                            <div className="text-xs text-gray-500">Data periods</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Gas Chart - Only show if it has data */}
-              {hasData(gasData) && (
-                <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-                  <h4 className="text-sm font-semibold mb-2">Gas Usage (m³)</h4>
-                  <BarChart
-                    xAxis={[{ data: gasLabels.map(d => {
-                      const date = new Date(d);
-                      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                    }), label: 'Date' }]}
-                    series={[{ data: gasData, label: 'Gas', color: '#EF4444' }]}
-                    height={chartsWithData === 1 ? 350 : 220} // Taller chart when it's the only one
-                  />
-                </div>
-              )}
+              {hasData(gasData) && (() => {
+                const gasStats = calculateStats(gasData, 'gas');
+                return (
+                  <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+                    <h4 className="text-sm font-semibold mb-2">Gas Usage (m³)</h4>
+                    <BarChart
+                      xAxis={[{ data: gasLabels.map(d => {
+                        const date = new Date(d);
+                        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      }), label: 'Date' }]}
+                      series={[{ data: gasData, label: 'Gas', color: '#EF4444' }]}
+                      height={chartsWithData === 1 ? 350 : 220} // Taller chart when it's the only one
+                    />
+                    
+                    {/* Chart Analytics */}
+                    {gasStats && (
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="flex justify-between items-center mb-3">
+                          <h5 className="text-sm font-semibold text-gray-900">Chart Analytics</h5>
+                          <div className="text-xs text-gray-500">{gasStats.dataPoints} data points</div>
+                        </div>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                          <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <ArrowTrendingUpIcon className="w-4 h-4 text-green-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Total Usage</h6>
+                            </div>
+                            <div className="text-sm font-bold text-green-600">{gasStats.totalConsumption}</div>
+                            <div className="text-xs text-gray-500">Selected period</div>
+                          </div>
+                          
+                          <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <ChartBarIcon className="w-4 h-4 text-blue-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Average per day</h6>
+                            </div>
+                            <div className="text-sm font-bold text-blue-600">{gasStats.averagePerDay}</div>
+                            <div className="text-xs text-gray-500">Average usage</div>
+                          </div>
+                          
+                          <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <ArrowTrendingUpIcon className="w-4 h-4 text-purple-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Peak Usage</h6>
+                            </div>
+                            <div className="text-sm font-bold text-purple-600">{gasStats.peakConsumption}</div>
+                            <div className="text-xs text-gray-500">Highest daily usage</div>
+                          </div>
+                          
+                          <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg p-3">
+                            <div className="flex items-center gap-2 mb-1">
+                              <CalendarIcon className="w-4 h-4 text-yellow-500" />
+                              <h6 className="font-medium text-gray-900 text-xs">Data Points</h6>
+                            </div>
+                            <div className="text-sm font-bold text-yellow-600">{gasStats.dataPoints}</div>
+                            <div className="text-xs text-gray-500">Data periods</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Show message when no charts have data */}
               {!hasData(energyData) && !hasData(solarData) && !hasData(waterData) && !hasData(gasData) && (

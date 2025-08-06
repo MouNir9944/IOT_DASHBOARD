@@ -57,9 +57,20 @@ export default function CreateUserPage() {
   useEffect(() => {
     if (!session?.user) return;
     let url = `${API_URL}/api/sites`;
-    if (session.user.role === 'admin') {
-      url = `${API_URL}/api/sites/user/${session.user.id}`;
+    
+    // Add query parameters for filtering
+    const params = new URLSearchParams();
+    if (session.user.role) {
+      params.append('role', session.user.role);
     }
+    if (session.user.role === 'admin' && session.user.id) {
+      params.append('createdBy', session.user.id);
+    }
+    
+    if (params.toString()) {
+      url += `?${params.toString()}`;
+    }
+    
     console.log('Fetching sites from:', url);
     fetch(url)
       .then(res => {
@@ -80,10 +91,16 @@ export default function CreateUserPage() {
       });
   }, [session]);
 
-  // Fetch all users, sending session role as query param
+  // Fetch all users, sending session role and user ID as query params
   useEffect(() => {
     if (!session?.user?.role) return;
-    const url = `${API_URL}/api/users?role=${session.user.role}`;
+    let url = `${API_URL}/api/users?role=${session.user.role}`;
+    
+    // Add createdBy parameter for admin users
+    if (session.user.role === 'admin' && session.user.id) {
+      url += `&createdBy=${session.user.id}`;
+    }
+    
     console.log('Fetching users from:', url);
     fetch(url)
       .then(res => {
@@ -151,7 +168,43 @@ export default function CreateUserPage() {
     setLoading(true);
     setSuccess('');
     setError('');
-    const payload = { name, email, password, role, sites };
+
+    // Validation for site assignment
+    if (role === 'user' && sites.length === 0) {
+      setError('Please assign exactly one site to this user');
+      setLoading(false);
+      return;
+    }
+    if (role === 'user' && sites.length > 1) {
+      setError('Users can only be assigned to one site');
+      setLoading(false);
+      return;
+    }
+    if (role === 'installator' && sites.length === 0) {
+      setError('Please assign at least one site to this installator');
+      setLoading(false);
+      return;
+    }
+
+    // For admin and superadmin, sites are optional but recommended
+    if (sites.length === 0 && (role === 'admin' || role === 'superadmin')) {
+      const confirmNoSites = window.confirm(
+        'No sites are assigned to this user. Admin and Superadmin users typically need site access. Continue anyway?'
+      );
+      if (!confirmNoSites) {
+        setLoading(false);
+        return;
+      }
+    }
+
+    const payload = { 
+      name, 
+      email, 
+      password, 
+      role, 
+      sites,
+      createdBy: session?.user?.id || null // Include the creator's ID
+    };
     console.log('Submitting payload:', payload);
     
     try {
@@ -184,7 +237,7 @@ export default function CreateUserPage() {
         // The API now returns the user object directly
         setUsers([...users, data]);
       }
-      setSuccess('User updated successfully!');
+      setSuccess(editingUser ? 'User updated successfully!' : 'User created successfully!');
       setEditingUser(null);
       setName('');
       setEmail('');
@@ -297,30 +350,94 @@ export default function CreateUserPage() {
                   required
                 >
                   {session.user.role === 'superadmin' && (
-                    <option value="superadmin">Superadmin</option>
+                    <option value="superadmin">Superadmin - Full system access</option>
                   )}
-                  <option value="admin">Admin</option>
-                  <option value="installator">Installator</option>
-                  <option value="user">User</option>
+                  <option value="admin">Admin - Site management access</option>
+                  <option value="installator">Installator - Device installation access</option>
+                  <option value="user">User - Basic site access</option>
                 </select>
+                <div className="text-xs text-gray-600 mt-1">
+                  {role === 'user' && 'Users can only be assigned to one site'}
+                  {role === 'installator' && 'Installators require at least one assigned site'}
+                  {role === 'admin' && 'Admins can manage multiple sites and create other admins'}
+                  {role === 'superadmin' && 'Superadmins have access to all sites'}
+                </div>
               </div>
               <div>
-                <label className="block font-semibold mb-1">Assign Sites</label>
-                <select
-                  className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
-                  multiple
-                  value={sites}
-                  onChange={e => {
-                    const selected = Array.from(e.target.selectedOptions, option => option.value);
-                    setSites(selected);
-                  }}
-                >
-                  {allSites.map(site => (
-                    <option key={site._id} value={site._id}>
-                      {site.name}
-                    </option>
-                  ))}
-                </select>
+                <label className="block font-semibold mb-1">
+                  Assign Sites {sites.length > 0 && <span className="text-green-600">({sites.length} selected)</span>}
+                </label>
+                <div className="text-xs text-gray-600 mb-2">
+                  {session.user.role === 'superadmin' 
+                    ? 'Superadmin can assign any site to users'
+                    : session.user.role === 'admin'
+                    ? 'Admin can assign their accessible sites to users'
+                    : role === 'user'
+                    ? 'Users can only be assigned to one site'
+                    : 'Select sites to assign to this user'
+                  }
+                </div>
+                {role === 'user' ? (
+                  <select
+                    className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    value={sites[0] || ''}
+                    onChange={e => {
+                      setSites(e.target.value ? [e.target.value] : []);
+                    }}
+                    required
+                  >
+                    <option value="">Select a site</option>
+                    {allSites.map(site => (
+                      <option key={site._id} value={site._id}>
+                        {site.name} ({site.type || 'unknown type'})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <select
+                    className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 min-h-[120px]"
+                    multiple
+                    value={sites}
+                    onChange={e => {
+                      const selected = Array.from(e.target.selectedOptions, option => option.value);
+                      setSites(selected);
+                    }}
+                    required={role === 'installator'}
+                  >
+                    {allSites.length === 0 ? (
+                      <option disabled>No sites available</option>
+                    ) : (
+                      allSites.map(site => (
+                        <option key={site._id} value={site._id}>
+                          {site.name} ({site.type || 'unknown type'})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                )}
+                {role !== 'user' && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    Hold Ctrl (or Cmd on Mac) to select multiple sites
+                  </div>
+                )}
+                {sites.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs font-semibold text-gray-700 mb-1">Selected Sites:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {sites.map(siteId => {
+                        const site = allSites.find(s => s._id === siteId);
+                        return site ? (
+                          <span 
+                            key={siteId}
+                            className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded"
+                          >
+                            {site.name}
+                          </span>
+                        ) : null;
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
               <button
                 className="w-full bg-blue-600 text-white py-2 rounded font-semibold hover:bg-blue-700 transition disabled:opacity-50"
@@ -386,6 +503,7 @@ export default function CreateUserPage() {
                   <th className="border-b p-2">Email</th>
                   <th className="border-b p-2">Role</th>
                   <th className="border-b p-2">Sites</th>
+                  <th className="border-b p-2">Created By</th>
                   <th className="border-b p-2">Actions</th>
                 </tr>
               </thead>
@@ -402,6 +520,13 @@ export default function CreateUserPage() {
                             : site.name
                           ).join(', ')
                         : 'None'}
+                    </td>
+                    <td className="border-b p-2">
+                      {user.createdBy ? (
+                        users.find(u => u._id === user.createdBy)?.name || 'Unknown'
+                      ) : (
+                        'System'
+                      )}
                     </td>
                     <td className="border-b p-2">
                       <button

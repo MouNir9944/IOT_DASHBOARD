@@ -32,13 +32,27 @@ async function reinitializeMQTT() {
 // Create a new site
 router.post('/', async (req, res) => {
   try {
-    let { name, location, address, description, devices, type, status, userId } = req.body;
+    let { name, location, address, description, devices, type, status, userId, createdBy } = req.body;
+    
+    console.log('Received request body:', req.body);
+    console.log('createdBy value:', createdBy);
+    console.log('userId value:', userId);
+    
     // Support location as string or object
     if (typeof location === 'string') {
       const [latitude, longitude] = location.split(',').map(Number);
       location = { latitude, longitude };
     }
-    const site = new Site({ name, location, address, description, devices, type, status });
+    const site = new Site({ 
+      name, 
+      location, 
+      address, 
+      description, 
+      devices, 
+      type, 
+      status,
+      createdBy: createdBy || null // Set createdBy field
+    });
     await site.save();
     // If userId is provided, assign the site to the user
     if (userId) { 
@@ -51,6 +65,7 @@ router.post('/', async (req, res) => {
     }
     res.status(201).json(site);
   } catch (error) {
+    console.error('Error creating site:', error);
     res.status(400).json({ error: error.message });
   }
 });
@@ -127,7 +142,7 @@ router.put('/:id', async (req, res) => {
     // 2. Now update the site document
     const site = await Site.findByIdAndUpdate(
       siteId,
-      { name, location, address, description, devices, type, status },
+      { name, location, address, description, devices, type, status, createdBy: req.body.createdBy },
       { new: true, runValidators: true }
     );
 
@@ -218,10 +233,28 @@ router.delete('/deletesite/:id', async (req, res) => {
     });
   }
 });*/
-// Get all sites
+// Get all sites - superadmin gets all sites, admin gets only sites created by them
 router.get('/', async (req, res) => {
   try {
-    const sites = await Site.find();
+    const role = req.query.role;
+    const createdBy = req.query.createdBy; // User ID of the admin creating the request
+    
+    let sites;
+    if (role === 'superadmin') {
+      // Superadmin can see all sites
+      sites = await Site.find();
+    } else if (role === 'admin') {
+      // Admin can only see sites they created
+      if (createdBy) {
+        sites = await Site.find({ createdBy: createdBy });
+      } else {
+        // Fallback: show all sites (for backward compatibility)
+        sites = await Site.find();
+      }
+    } else {
+      // For other roles, show all sites (maintain existing behavior)
+      sites = await Site.find();
+    }
     res.json(sites);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -272,5 +305,16 @@ function getDefaultUnit(type) {
   };
   return units[type] || 'unit';
 }
+
+// GET /api/sites/created-by/:creatorId - get sites created by a specific user
+router.get('/created-by/:creatorId', async (req, res) => {
+  try {
+    const { creatorId } = req.params;
+    const sites = await Site.find({ createdBy: creatorId });
+    res.json(sites);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 export default router; 

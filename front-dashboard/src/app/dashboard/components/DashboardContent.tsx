@@ -7,7 +7,8 @@ import {
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
   FireIcon,
-  CalendarIcon
+  CalendarIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import MapWrapper from './MapWrapper';
 import { useSession } from 'next-auth/react';
@@ -230,6 +231,50 @@ export default function DashboardContent() {
     // For now, return all data points - we'll handle responsiveness in the chart component
     return { values, labels };
   };
+
+  // Helper function to export chart data as CSV
+  const exportChartData = (data: number[], labels: string[], chartType: string) => {
+    if (!data || !labels || data.length === 0) {
+      alert('No data available to export');
+      return;
+    }
+
+    // Create CSV content
+    const csvContent = [
+      ['Date', `${chartType.charAt(0).toUpperCase() + chartType.slice(1)} Value`],
+      ...labels.map((label, index) => [label, data[index]?.toString() || '0'])
+    ].map(row => row.join(',')).join('\n');
+
+    // Create and download file
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${chartType}_data_${selectedPeriod}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Export button component
+  const ExportButton = ({ 
+    onClick, 
+    disabled = false 
+  }: { 
+    onClick: () => void, 
+    disabled?: boolean 
+  }) => (
+    <button
+      className={`absolute top-2 right-12 z-10 bg-white rounded-full p-1 shadow hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed`}
+      onClick={onClick}
+      disabled={disabled}
+      aria-label="Export chart data"
+      type="button"
+    >
+      <ArrowDownTrayIcon className="w-5 h-5 text-gray-500" />
+    </button>
+  );
 
   // Time period selector component
   const TimePeriodSelector = () => (
@@ -454,19 +499,22 @@ export default function DashboardContent() {
   // Modal for maximized chart
   const MaximizedChartModal = ({ energyMinLen, waterMinLen, gasMinLen }: { energyMinLen: number, waterMinLen: number, gasMinLen: number }) => {
     if (!maximizedChart) return null;
-    let xAxis, series, chartTitle;
+    let xAxis, series, chartTitle, chartType;
     if (maximizedChart === 'energy') {
       xAxis = [{ data: energyLabels.slice(0, energyMinLen) }];
       series = [{ data: energyData.slice(0, energyMinLen), label: 'Energy', color: '#3B82F6' }];
       chartTitle = 'Energy Consumption (kWh)';
+      chartType = 'energy';
     } else if (maximizedChart === 'water') {
       xAxis = [{ data: waterLabels.slice(0, waterMinLen) }];
       series = [{ data: waterData.slice(0, waterMinLen), label: 'Water', color: '#9333EA' }];
       chartTitle = 'Water Usage (m³)';
+      chartType = 'water';
     } else if (maximizedChart === 'gas') {
       xAxis = [{ data: gasLabels.slice(0, gasMinLen) }];
       series = [{ data: gasData.slice(0, gasMinLen), label: 'Gas', color: '#EF4444' }];
       chartTitle = 'Gas Usage (m³)';
+      chartType = 'gas';
     } else {
       return null;
     }
@@ -483,9 +531,121 @@ export default function DashboardContent() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
+          <button
+            className="absolute top-2 right-12 z-10 bg-white rounded-full p-1 shadow hover:bg-gray-100"
+            onClick={() => {
+              if (chartType === 'energy') {
+                exportChartData(energyData.slice(0, energyMinLen), energyLabels.slice(0, energyMinLen), 'energy');
+              } else if (chartType === 'water') {
+                exportChartData(waterData.slice(0, waterMinLen), waterLabels.slice(0, waterMinLen), 'water');
+              } else if (chartType === 'gas') {
+                exportChartData(gasData.slice(0, gasMinLen), gasLabels.slice(0, gasMinLen), 'gas');
+              }
+            }}
+            aria-label="Export chart data"
+            type="button"
+          >
+            <ArrowDownTrayIcon className="w-5 h-5 text-gray-500" />
+          </button>
           <h2 className="text-lg font-semibold text-center mb-4">{chartTitle}</h2>
           <div className="flex-1 flex items-center justify-center">
             <BarChart xAxis={xAxis} series={series} height={500} />
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Helper function to calculate statistics for a dataset
+  const calculateStats = (data: number[]) => {
+    if (!data || data.length === 0) {
+      return {
+        total: 0,
+        average: 0,
+        peak: 0,
+        dataPoints: 0
+      };
+    }
+
+    const nonZeroData = data.filter(value => value > 0);
+    const total = data.reduce((sum, value) => sum + value, 0);
+    const average = data.length > 0 ? total / data.length : 0;
+    const peak = Math.max(...data);
+    const dataPoints = nonZeroData.length;
+
+    return { total, average, peak, dataPoints };
+  };
+
+  // Statistics cards component
+  const StatisticsCards = ({ 
+    data, 
+    type, 
+    unit 
+  }: { 
+    data: number[], 
+    type: string, 
+    unit: string 
+  }) => {
+    const stats = calculateStats(data);
+    
+    const formatValue = (value: number) => {
+      if (type === 'energy') {
+        return value.toFixed(1) + ' kWh';
+      } else if (type === 'water') {
+        return value.toFixed(3) + ' m³';
+      } else if (type === 'gas') {
+        return value.toFixed(1) + ' m³';
+      }
+      return value.toFixed(2) + ' ' + unit;
+    };
+
+    return (
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+        {/* Total Consumption */}
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+          <div className="flex items-center">
+            <ArrowTrendingUpIcon className="w-5 h-5 text-green-600" />
+            <div className="ml-2">
+              <p className="text-xs font-medium text-green-800">Total Consumption</p>
+              <p className="text-sm font-bold text-green-900">{formatValue(stats.total)}</p>
+              <p className="text-xs text-green-600">Selected period</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Average per day */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div className="flex items-center">
+            <ChartBarIcon className="w-5 h-5 text-blue-600" />
+            <div className="ml-2">
+              <p className="text-xs font-medium text-blue-800">Average per day</p>
+              <p className="text-sm font-bold text-blue-900">{formatValue(stats.average)}</p>
+              <p className="text-xs text-blue-600">Average consumption</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Peak Consumption */}
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+          <div className="flex items-center">
+            <BoltIcon className="w-5 h-5 text-purple-600" />
+            <div className="ml-2">
+              <p className="text-xs font-medium text-purple-800">Peak Consumption</p>
+              <p className="text-sm font-bold text-purple-900">{formatValue(stats.peak)}</p>
+              <p className="text-xs text-purple-600">Highest daily usage</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Data Points */}
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+          <div className="flex items-center">
+            <CalendarIcon className="w-5 h-5 text-yellow-600" />
+            <div className="ml-2">
+              <p className="text-xs font-medium text-yellow-800">Data Points</p>
+              <p className="text-sm font-bold text-yellow-900">{stats.dataPoints}</p>
+              <p className="text-xs text-yellow-600">Data periods</p>
+            </div>
           </div>
         </div>
       </div>
@@ -635,12 +795,17 @@ export default function DashboardContent() {
             {hasData(energyData) && (
               <div className="bg-white rounded-lg shadow p-4 sm:p-6 relative">
                 <MaximizeButton onClick={() => setMaximizedChart('energy')} />
+                <ExportButton 
+                  onClick={() => exportChartData(energyData.slice(0, energyMinLen), energyLabels.slice(0, energyMinLen), 'energy')}
+                  disabled={!hasData(energyData)}
+                />
                 <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Energy Consumption (kWh)</h3>
                 <BarChart
                   xAxis={[{ data: energyLabels.slice(0, energyMinLen) }]}
                   series={[{ data: energyData.slice(0, energyMinLen), label: 'Energy', color: '#3B82F6' }]}
                   height={chartsWithData === 1 ? 400 : 300} // Taller chart when it's the only one
                 />
+                <StatisticsCards data={energyData} type="energy" unit="kWh" />
               </div>
             )}
 
@@ -648,12 +813,17 @@ export default function DashboardContent() {
             {hasData(waterData) && (
               <div className="bg-white rounded-lg shadow p-4 sm:p-6 relative">
                 <MaximizeButton onClick={() => setMaximizedChart('water')} />
+                <ExportButton 
+                  onClick={() => exportChartData(waterData.slice(0, waterMinLen), waterLabels.slice(0, waterMinLen), 'water')}
+                  disabled={!hasData(waterData)}
+                />
                 <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Water Usage (m³)</h3>
                 <BarChart
                   xAxis={[{ data: waterLabels.slice(0, waterMinLen) }]}
                   series={[{ data: waterData.slice(0, waterMinLen), label: 'Water', color: '#9333EA' }]}
                   height={chartsWithData === 1 ? 400 : 300} // Taller chart when it's the only one
                 />
+                <StatisticsCards data={waterData} type="water" unit="m³" />
               </div>
             )}
 
@@ -661,12 +831,17 @@ export default function DashboardContent() {
             {hasData(gasData) && (
               <div className="bg-white rounded-lg shadow p-4 sm:p-6 relative">
                 <MaximizeButton onClick={() => setMaximizedChart('gas')} />
+                <ExportButton 
+                  onClick={() => exportChartData(gasData.slice(0, gasMinLen), gasLabels.slice(0, gasMinLen), 'gas')}
+                  disabled={!hasData(gasData)}
+                />
                 <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Gas Usage (m³)</h3>
                 <BarChart
                   xAxis={[{ data: gasLabels.slice(0, gasMinLen) }]}
                   series={[{ data: gasData.slice(0, gasMinLen), label: 'Gas', color: '#EF4444' }]}
-                  height={chartsWithData === 1 ? 400 : 300} // Taller chart when it's the only one
+                  height={chartsWithData === 1 ? 400 : 300} // Taller chart when it's one
                 />
+                <StatisticsCards data={gasData} type="gas" unit="m³" />
               </div>
             )}
 

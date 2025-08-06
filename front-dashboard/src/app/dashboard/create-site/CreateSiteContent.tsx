@@ -160,7 +160,7 @@ export default function CreateSiteContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
 
   // Only allow admins to create sites
   const isAdmin = session?.user?.role === 'admin' || session?.user?.role === 'superadmin';
@@ -177,9 +177,20 @@ export default function CreateSiteContent() {
     if (!session?.user) return;
     setLoading(true);
     let url = API_URL;
-    if (session.user.role === 'admin') {
-      url = `${API_URL}/user/${session.user.id}`;
+    
+    // Add query parameters for filtering
+    const params = new URLSearchParams();
+    if (session.user.role) {
+      params.append('role', session.user.role);
     }
+    if (session.user.role === 'admin' && session.user.id) {
+      params.append('createdBy', session.user.id);
+    }
+    
+    if (params.toString()) {
+      url += `?${params.toString()}`;
+    }
+    
     fetch(url)
       .then(res => res.json())
       .then(data => {
@@ -194,19 +205,35 @@ export default function CreateSiteContent() {
 
   const handleCreate = async () => {
     if (!siteName || !selectedPos || !siteType) return;
+    if (status === 'loading') {
+      setError('Session is still loading. Please wait and try again.');
+      return;
+    }
+    if (!session?.user?.id) {
+      setError('User session not available. Please refresh the page and try again.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
+      console.log('Session user:', session?.user);
+      console.log('User ID:', session?.user?.id);
+      console.log('User role:', session?.user?.role);
+      
       const body: any = {
         name: siteName,
         location: { latitude: selectedPos[0], longitude: selectedPos[1] },
         type: siteType,
         address: address || undefined,
         description: description || undefined,
+        createdBy: session.user.id, // Use the user ID directly
       };
-      if (session?.user && session.user.role !== 'superadmin') {
+      if (session.user.role !== 'superadmin') {
         body.userId = session.user.id;
       }
+      
+      console.log('Request body:', body);
+      
       const res = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -221,6 +248,7 @@ export default function CreateSiteContent() {
       setDescription('');
       setSelectedPos(null);
     } catch (err) {
+      console.error('Error creating site:', err);
       setError('Failed to create site');
     } finally {
       setLoading(false);
@@ -252,6 +280,14 @@ export default function CreateSiteContent() {
 
   const handleUpdate = async () => {
     if (!editingId || !editName || !selectedPos || !editType) return;
+    if (status === 'loading') {
+      setError('Session is still loading. Please wait and try again.');
+      return;
+    }
+    if (!session?.user?.id) {
+      setError('User session not available. Please refresh the page and try again.');
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -264,6 +300,7 @@ export default function CreateSiteContent() {
           type: editType,
           address: editAddress || undefined,
           description: editDescription || undefined,
+          createdBy: session.user.id, // Use the user ID directly
         }),
       });
       if (!res.ok) throw new Error('Failed to update site');
@@ -276,6 +313,7 @@ export default function CreateSiteContent() {
       setEditDescription('');
       setSelectedPos(null);
     } catch (err) {
+      console.error('Error updating site:', err);
       setError('Failed to update site');
     } finally {
       setLoading(false);
@@ -340,6 +378,18 @@ export default function CreateSiteContent() {
         </div>
         <div className="rounded-xl shadow-lg border bg-white p-6">
           <h2 className="text-2xl font-bold mb-4 text-blue-700">{editingId ? 'Edit Site' : 'Create Site'}</h2>
+          {status === 'loading' && (
+            <div className="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded">
+              Loading user session...
+            </div>
+          )}
+          {status === 'authenticated' && !session?.user?.id && (
+            <div className="mb-4 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
+              Warning: User ID not found in session. This may cause issues with site creation.
+              <br />
+              <small>Session data: {JSON.stringify(session?.user)}</small>
+            </div>
+          )}
           <form className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <label className="font-semibold">Site Name<span className="text-red-500">*</span></label>

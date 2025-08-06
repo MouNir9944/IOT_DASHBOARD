@@ -8,15 +8,27 @@ import bcrypt from 'bcryptjs';
 const router = express.Router();
 
 
-// GET /api/users - superadmin gets all users except superadmin, admin gets only installators and users
+// GET /api/users - superadmin gets all users except superadmin, admin gets only users created by them
 router.get('/', async (req, res) => {
   try {
     const role = req.query.role;
+    const createdBy = req.query.createdBy; // User ID of the admin creating the request
+    
     let users;
     if (role === 'superadmin') {
+      // Superadmin can see all users except other superadmins
       users = await User.find({ role: { $in: ['user', 'installator', 'admin'] } });
     } else if (role === 'admin') {
-      users = await User.find({ role: { $in: ['user', 'installator'] } });
+      // Admin can only see users they created (including other admins they created)
+      if (createdBy) {
+        users = await User.find({ 
+          role: { $in: ['user', 'installator', 'admin'] },
+          createdBy: createdBy
+        });
+      } else {
+        // Fallback: show all users, installators, and admins (for backward compatibility)
+        users = await User.find({ role: { $in: ['user', 'installator', 'admin'] } });
+      }
     } else {
       return res.status(403).json({ error: 'Forbidden' });
     }
@@ -26,10 +38,10 @@ router.get('/', async (req, res) => {
   }
 });
 
-// POST /api/users - create user (superadmin only)
+// POST /api/users - create user (superadmin and admin can create users)
 router.post('/', async (req, res) => {
   try {
-    const { name, email, password, role, sites } = req.body;
+    const { name, email, password, role, sites, createdBy } = req.body;
     if (!name || !email || !password || !role) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
@@ -38,7 +50,14 @@ router.post('/', async (req, res) => {
       return res.status(409).json({ error: 'User already exists' });
     }
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, password: hashedPassword, role, sites });
+    const user = new User({ 
+      name, 
+      email, 
+      password: hashedPassword, 
+      role, 
+      sites,
+      createdBy: createdBy || null // Set createdBy field
+    });
     await user.save();
 
     res.status(201).json(user);
@@ -55,7 +74,7 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const { name, email, password, role, sites } = req.body;
+    const { name, email, password, role, sites, createdBy } = req.body;
     if (name !== undefined) user.name = name;
     if (email !== undefined) user.email = email;
     if (password !== undefined) {
@@ -63,6 +82,7 @@ router.put('/:id', async (req, res) => {
     }
     if (role !== undefined) user.role = role;
     if (sites !== undefined) user.sites = sites;
+    if (createdBy !== undefined) user.createdBy = createdBy;
     await user.save();
 
     res.json(user);
@@ -81,6 +101,17 @@ router.delete('/:id', async (req, res) => {
 
     await user.deleteOne();
     res.json({ message: 'User deleted' });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/users/created-by/:creatorId - get users created by a specific user
+router.get('/created-by/:creatorId', async (req, res) => {
+  try {
+    const { creatorId } = req.params;
+    const users = await User.find({ createdBy: creatorId });
+    res.json(users);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

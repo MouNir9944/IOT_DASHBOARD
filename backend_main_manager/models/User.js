@@ -30,7 +30,12 @@ const userSchema = new mongoose.Schema({
   sites: [{
     type: mongoose.Schema.Types.ObjectId,
 
-  }]
+  }],
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: false // Not required for superadmin created users
+  }
 }, { 
   timestamps: true 
 });

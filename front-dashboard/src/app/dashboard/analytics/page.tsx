@@ -10,7 +10,8 @@ import {
   CloudIcon,
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
-  FireIcon
+  FireIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import { BarChart, PieChart } from '@mui/x-charts';
 import TextField from '@mui/material/TextField';
@@ -56,6 +57,77 @@ export default function AnalyticsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [compareData, setCompareData] = useState<any[]>([]);
+
+  // Export functions
+  const exportBarChartData = () => {
+    if (!compareData || compareData.length === 0) {
+      alert('No data available to export');
+      return;
+    }
+    
+    const csvData = [];
+    const periods = Array.from(new Set(compareData.flatMap(site => site.values.map((v: any) => v.period))));
+    periods.sort();
+    
+    // Header row
+    csvData.push(['Period', ...compareData.map(site => site.siteName)]);
+    
+    // Data rows
+    periods.forEach(period => {
+      const row = [period];
+      compareData.forEach(site => {
+        const found = site.values.find((v: any) => v.period === period);
+        row.push(found ? found.value.toFixed(3) : '0');
+      });
+      csvData.push(row);
+    });
+    
+    const csvContent = csvData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `global_${metric}_bar_chart_${period}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportPieChartData = () => {
+    if (!compareData || compareData.length === 0) {
+      alert('No data available to export');
+      return;
+    }
+    
+    const csvData = [];
+    csvData.push(['Site', 'Total Value', 'Percentage']);
+    
+    const totalValue = compareData.reduce((sum, site) => 
+      sum + site.values.reduce((siteSum: number, v: any) => siteSum + v.value, 0), 0
+    );
+    
+    compareData.forEach(site => {
+      const siteTotal = site.values.reduce((sum: number, v: any) => sum + v.value, 0);
+      const percentage = totalValue > 0 ? (siteTotal / totalValue * 100) : 0;
+      csvData.push([
+        site.siteName,
+        siteTotal.toFixed(3),
+        percentage.toFixed(2) + '%'
+      ]);
+    });
+    
+    const csvContent = csvData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `global_${metric}_pie_chart_${period}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   useEffect(() => {
     if (!session?.user) return;
@@ -172,7 +244,7 @@ export default function AnalyticsPage() {
     <DashboardLayout user={user}>
       <Box sx={{ p: { xs: 1, sm: 2, md: 4 }, maxWidth: '1100px', mx: 'auto' }}>
         <Typography variant="h4" fontWeight={700} mb={3} gutterBottom>
-          Site Comparison Analytics
+          Sites Comparison Analytics
         </Typography>
         <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 }, mb: 4, borderRadius: 3 }}>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-end' }}>
@@ -240,9 +312,21 @@ export default function AnalyticsPage() {
             {periods.length > 0 && (
               <Box sx={{ mb: 4 }}>
                 <Paper elevation={2} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
-                  <Typography variant="h6" fontWeight={600} mb={2}>
-                    Bar Chart
-                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6" fontWeight={600}>
+                      Bar Chart
+                    </Typography>
+                    {(session?.user?.role === 'superadmin' || session?.user?.role === 'admin' || session?.user?.role === 'user') && compareData.length > 0 && (
+                      <button
+                        onClick={exportBarChartData}
+                        className="px-3 py-1 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-1"
+                        title="Export bar chart data to CSV"
+                      >
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        Export Bar Chart
+                      </button>
+                    )}
+                  </Box>
                   <BarChart
                     xAxis={[{ data: periods, label: 'Period' }]}
                     series={barSeries}
@@ -271,9 +355,21 @@ export default function AnalyticsPage() {
             {pieData.length > 0 && (
               <Box sx={{ mb: 4 }}>
                 <Paper elevation={2} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
-                  <Typography variant="h6" fontWeight={600} mb={2}>
-                    Pie Chart
-                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6" fontWeight={600}>
+                      Pie Chart
+                    </Typography>
+                    {(session?.user?.role === 'superadmin' || session?.user?.role === 'admin' || session?.user?.role === 'user') && compareData.length > 0 && (
+                      <button
+                        onClick={exportPieChartData}
+                        className="px-3 py-1 text-sm rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-1"
+                        title="Export pie chart data to CSV"
+                      >
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        Export Pie Chart
+                      </button>
+                    )}
+                  </Box>
                   <PieChart
                     series={[{ data: pieData, innerRadius: 60 }]}
                     height={350}

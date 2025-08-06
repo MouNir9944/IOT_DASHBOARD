@@ -1,6 +1,6 @@
 'use client';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeftIcon, BoltIcon, SunIcon, CloudIcon, FireIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, BoltIcon, SunIcon, CloudIcon, FireIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState } from 'react';
 import DashboardLayout from '../../../components/DashboardLayout';
 import { BarChart, PieChart } from '@mui/x-charts';
@@ -47,15 +47,97 @@ export default function SiteAnalyticsPage() {
   const [deviceOptions, setDeviceOptions] = useState<any[]>([]);          
   const [selectedDevices, setSelectedDevices] = useState<string[]>([]);
   const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites'; // TODO: change to /api/sites/data/site/{siteId}/devices?type={type}
+  
+  // Export functions
+  const exportBarChartData = () => {
+    if (!compareData || compareData.length === 0) {
+      alert('No data available to export');
+      return;
+    }
+    
+    const csvData = [];
+    const periods = Array.from(new Set(compareData.flatMap(device => device.values.map((v: any) => v.period))));
+    periods.sort();
+    
+    // Header row
+    csvData.push(['Period', ...compareData.map(device => device.deviceName)]);
+    
+    // Data rows
+    periods.forEach(period => {
+      const row = [period];
+      compareData.forEach(device => {
+        const found = device.values.find((v: any) => v.period === period);
+        row.push(found ? found.value.toFixed(3) : '0');
+      });
+      csvData.push(row);
+    });
+    
+    const csvContent = csvData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${siteName}_${metric}_bar_chart_${period}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportPieChartData = () => {
+    if (!compareData || compareData.length === 0) {
+      alert('No data available to export');
+      return;
+    }
+    
+    const csvData = [];
+    csvData.push(['Device', 'Total Value', 'Percentage']);
+    
+    const totalValue = compareData.reduce((sum, device) => 
+      sum + device.values.reduce((deviceSum: number, v: any) => deviceSum + v.value, 0), 0
+    );
+    
+    compareData.forEach(device => {
+      const deviceTotal = device.values.reduce((sum: number, v: any) => sum + v.value, 0);
+      const percentage = totalValue > 0 ? (deviceTotal / totalValue * 100) : 0;
+      csvData.push([
+        device.deviceName,
+        deviceTotal.toFixed(3),
+        percentage.toFixed(2) + '%'
+      ]);
+    });
+    
+    const csvContent = csvData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${siteName}_${metric}_pie_chart_${period}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   // Fetch site name
   useEffect(() => {
     async function fetchSite() {
       try {
-        const res = await fetch(`${API_URL}/sites/${siteId}`);
-        if (!res.ok) throw new Error('Failed to fetch site');
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/sites/${siteId}`);
+        if (!res.ok) {
+          console.error('Failed to fetch site:', res.status, res.statusText);
+          throw new Error('Failed to fetch site');
+        }
         const data = await res.json();
-        setSiteName(data.name || siteId);
-      } catch {
+        console.log('Site data:', data);
+        if (data && data.name) {
+          setSiteName(data.name);
+        } else {
+          console.warn('No site name found in response, using siteId');
+          setSiteName(siteId);
+        }
+      } catch (error) {
+        console.error('Error fetching site:', error);
         setSiteName(siteId);
       }
     }
@@ -220,9 +302,21 @@ export default function SiteAnalyticsPage() {
             {periods.length > 0 && (
               <Box sx={{ mb: 4 }}>
                 <Paper elevation={2} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
-                  <Typography variant="h6" fontWeight={600} mb={2}>
-                    Bar Chart
-                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6" fontWeight={600}>
+                      Bar Chart
+                    </Typography>
+                    {(session?.user?.role === 'superadmin' || session?.user?.role === 'admin' || session?.user?.role === 'user') && compareData.length > 0 && (
+                      <button
+                        onClick={exportBarChartData}
+                        className="px-3 py-1 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-1"
+                        title="Export bar chart data to CSV"
+                      >
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        Export Bar Chart
+                      </button>
+                    )}
+                  </Box>
                   <BarChart
                     xAxis={[{ data: periods, label: 'Period' }]}
                     series={barSeries}
@@ -251,9 +345,21 @@ export default function SiteAnalyticsPage() {
             {pieData.length > 0 && (
               <Box sx={{ mb: 4 }}>
                 <Paper elevation={2} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
-                  <Typography variant="h6" fontWeight={600} mb={2}>
-                    Pie Chart
-                  </Typography>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+                    <Typography variant="h6" fontWeight={600}>
+                      Pie Chart
+                    </Typography>
+                    {(session?.user?.role === 'superadmin' || session?.user?.role === 'admin' || session?.user?.role === 'user') && compareData.length > 0 && (
+                      <button
+                        onClick={exportPieChartData}
+                        className="px-3 py-1 text-sm rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-1"
+                        title="Export pie chart data to CSV"
+                      >
+                        <ArrowDownTrayIcon className="w-4 h-4" />
+                        Export Pie Chart
+                      </button>
+                    )}
+                  </Box>
                   <PieChart
                     series={[{ data: pieData, innerRadius: 60 }]}
                     height={350}

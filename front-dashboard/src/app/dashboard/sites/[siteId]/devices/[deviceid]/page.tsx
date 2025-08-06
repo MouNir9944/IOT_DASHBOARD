@@ -20,7 +20,8 @@ import {
   PauseIcon,
   CogIcon,
   PencilIcon,
-  CalendarIcon
+  CalendarIcon,
+  ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
 import { BarChart } from '@mui/x-charts/BarChart';
 import { LineChart } from '@mui/x-charts/LineChart';
@@ -396,6 +397,121 @@ export default function DeviceDetailPage() {
       changeType: percent >= 0 ? 'increase' : 'decrease',
     };
   }
+
+  // Export chart data to CSV
+  const exportChartData = () => {
+    if (!chartData || chartData.length === 0) {
+      alert('No chart data available to export');
+      return;
+    }
+
+    const csvData = [];
+    csvData.push(['Date', 'Time', `${device?.type === 'energy' ? 'Energy' : device?.type === 'solar' ? 'Solar' : device?.type === 'water' ? 'Water' : device?.type === 'gas' ? 'Gas' : 'Consumption'} (${device?.type === 'energy' || device?.type === 'solar' ? 'kWh' : device?.type === 'water' || device?.type === 'gas' ? 'm³' : 'units'})`, 'Total Consumption']);
+    
+    let totalConsumption = 0;
+    for (let i = 0; i < chartLabels.length; i++) {
+      const date = chartLabels[i];
+      const value = chartData[i] || 0;
+      totalConsumption += value;
+      
+      const dateObj = new Date(date);
+      const dateStr = dateObj.toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit'
+      });
+      const timeStr = getGranularity() === 'hour' ? 
+        dateObj.toLocaleTimeString('en-US', { 
+          hour: '2-digit', 
+          minute: '2-digit',
+          hour12: true 
+        }) : '';
+      
+      csvData.push([
+        dateStr,
+        timeStr,
+        value.toFixed(3),
+        totalConsumption.toFixed(3)
+      ]);
+    }
+    
+    const csvContent = csvData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${device?.name || device?.deviceId}_chart_data_${selectedPeriod}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // Export historical data to CSV
+  const exportHistoricalData = () => {
+    if (!device || device.type !== 'water') {
+      alert('Historical data export is only available for water devices');
+      return;
+    }
+
+    const csvData = [];
+    csvData.push(['Date', 'Time', 'Flow Rate (L/min)', 'Pressure (bar)', 'Temperature (°C)']);
+    
+    // Get the maximum length of all data arrays
+    const maxLength = Math.max(
+      combinedChartData.flowRate.data.length,
+      combinedChartData.pressure.data.length,
+      combinedChartData.temperature.data.length
+    );
+    
+    for (let i = 0; i < maxLength; i++) {
+      const flowRate = combinedChartData.flowRate.data[i] || 0;
+      const pressure = combinedChartData.pressure.data[i] || 0;
+      const temperature = combinedChartData.temperature.data[i] || 0;
+      
+      let timestamp = null;
+      if (combinedChartData.flowRate.timestamps[i]) {
+        timestamp = new Date(combinedChartData.flowRate.timestamps[i]);
+      } else if (combinedChartData.pressure.timestamps[i]) {
+        timestamp = new Date(combinedChartData.pressure.timestamps[i]);
+      } else if (combinedChartData.temperature.timestamps[i]) {
+        timestamp = new Date(combinedChartData.temperature.timestamps[i]);
+      }
+      
+      if (timestamp) {
+        const dateStr = timestamp.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit'
+        });
+        const timeStr = timestamp.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true
+        });
+        
+        csvData.push([
+          dateStr,
+          timeStr,
+          flowRate.toFixed(3),
+          pressure.toFixed(3),
+          temperature.toFixed(3)
+        ]);
+      }
+    }
+    
+    const csvContent = csvData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${device?.name || device?.deviceId}_historical_data_${waterMetricsPeriod}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   // Helper to generate period labels between two dates
   function generatePeriodLabels(from: string, to: string, granularity: string) {
@@ -1589,6 +1705,7 @@ export default function DeviceDetailPage() {
         {/* Header */}
         <div className="bg-white rounded-lg shadow p-4 sm:p-6">
           <div className="flex gap-3 mb-4">
+
             <button
               onClick={() => router.push(`/dashboard/sites/${siteId}`)}
               className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"
@@ -1604,7 +1721,20 @@ export default function DeviceDetailPage() {
               {configMode ? 'Cancel' : 'Configure'}
             </button>
           </div>
-          
+                      {/* Historical Data Export Button for Water Devices */}
+          {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && device?.type === 'water' && (
+              <div className="flex items-center justify-between">
+
+                <button
+                  onClick={exportHistoricalData}
+                  className="px-3 py-1 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-1"
+                  title="Export historical data to CSV"
+                >
+                  <ArrowDownTrayIcon className="w-3 h-3" />
+                  Export Historical Data
+                </button>
+              </div>
+          )}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               {getTypeIcon(device.type)}
@@ -1641,6 +1771,8 @@ export default function DeviceDetailPage() {
               </span>
             </div>
           </div>
+          
+
         {/* Device Info Summary */}
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Device Information</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -1671,6 +1803,8 @@ export default function DeviceDetailPage() {
           </div>
     
         </div>
+
+
 
         {/* Real-time Data Display */}
         <div className="bg-white rounded-lg shadow p-4 sm:p-6">
@@ -1877,190 +2011,7 @@ export default function DeviceDetailPage() {
 
 
 
-        {/* Device Consumption Charts */}
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-          {/* Time Period Selector */}
-          <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4 mb-4">
-            <div className="flex items-center gap-2">
-              <CalendarIcon className="w-5 h-5 text-gray-500" />
-              <span className="text-sm font-medium text-gray-700">Time Period:</span>
-            </div>
-            <div className="flex flex-1 items-center">
-              <div className="flex flex-wrap gap-2 items-center">
-                {timePeriods.map((period) => (
-                  <button
-                    key={period.value}
-                    onClick={() => {
-                      setSelectedPeriod(period.value);
-                      setShowCustomPicker(period.value === 'custom');
-                    }}
-                    className={`px-3 py-1 text-sm rounded-md transition-colors ${
-                      selectedPeriod === period.value
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                  >
-                    {period.label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex-1" />
-              
 
-            </div>
-            {showCustomPicker && (
-              <LocalizationProvider dateAdapter={AdapterDateFns}>
-                <DateTimePicker
-                  label="From"
-                  value={customFrom}
-                  onChange={setCustomFrom}
-                  slotProps={{ textField: { size: 'small' } }}
-                />
-                <span className="text-gray-500">to</span>
-                <DateTimePicker
-                  label="To"
-                  value={customTo}
-                  onChange={setCustomTo}
-                  slotProps={{ textField: { size: 'small' } }}
-                />
-              </LocalizationProvider>
-            )}
-          </div>
-
-
-
-          {/* Chart Display */}
-          <div className="mb-4">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">
-              Daily Consumption Chart
-            </h3>
-          </div>
-          {chartType === 'line' ? (
-            <LineChart
-              xAxis={[{ 
-                data: chartLabels.map(d => new Date(d)), 
-                label: 'Date',
-                valueFormatter: (value: any) => {
-                  // Ensure we have a valid Date object
-                  const date = value instanceof Date ? value : new Date(value);
-                  if (isNaN(date.getTime())) {
-                    return 'Invalid Date';
-                  }
-                  return date.toLocaleDateString('en-US', { 
-                    month: 'short', 
-                    day: 'numeric',
-                    hour: getGranularity() === 'hour' ? '2-digit' : undefined,
-                    minute: getGranularity() === 'hour' ? '2-digit' : undefined
-                  });
-                }
-              }]}
-              series={[{ 
-                data: chartData, 
-                label: device?.type === 'energy' ? 'Energy' :
-                       device?.type === 'solar' ? 'Solar' :
-                       device?.type === 'water' ? 'Water' :
-                       device?.type === 'gas' ? 'Gas' : 'Consumption',
-                color: device?.type === 'energy' ? '#3B82F6' :
-                       device?.type === 'solar' ? '#22C55E' :
-                       device?.type === 'water' ? '#9333EA' :
-                       device?.type === 'gas' ? '#EF4444' : '#6366F1',
-                curve: 'linear',
-                area: true
-              }]}
-              height={350}
-              grid={{ vertical: true, horizontal: true }}
-            />
-          ) : (
-            <BarChart
-              xAxis={[{ 
-                data: chartLabels.map(d => {
-                  const date = new Date(d);
-                  return date.toLocaleDateString('en-US', { 
-                    month: 'short', 
-                    day: 'numeric',
-                    hour: getGranularity() === 'hour' ? '2-digit' : undefined,
-                    minute: getGranularity() === 'hour' ? '2-digit' : undefined
-                  });
-                }), 
-                label: 'Date' 
-              }]}
-              series={[{ 
-                data: chartData, 
-                label: device?.type === 'energy' ? 'Energy' :
-                       device?.type === 'solar' ? 'Solar' :
-                       device?.type === 'water' ? 'Water' :
-                       device?.type === 'gas' ? 'Gas' : 'Consumption',
-                color: device?.type === 'energy' ? '#3B82F6' :
-                       device?.type === 'solar' ? '#22C55E' :
-                       device?.type === 'water' ? '#9333EA' :
-                       device?.type === 'gas' ? '#EF4444' : '#6366F1'
-              }]}
-              height={350}
-            />
-          )}
-                  {/* Device Statistics with Consumption Analysis */}
-        {deviceStats && deviceStats.data.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-4 sm:p-6 mb-4">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">
-                Device Statistics ({getGranularity() === 'hour' ? 'Hourly' : getGranularity() === 'day' ? 'Daily' : getGranularity() === 'week' ? 'Weekly' : 'Monthly'} Data)
-              </h3>
-              <div className="text-sm text-gray-500">
-                {deviceStats.data.length} data points
-              </div>
-            </div>
-            
-            {/* Summary Statistics */}
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-6">
-              <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg shadow-sm p-4">
-                <div className="flex items-center gap-3 mb-2">
-                  <ArrowTrendingUpIcon className="w-6 h-6 text-green-500" />
-                  <h4 className="font-semibold text-gray-900 text-sm">Total Consumption</h4>
-                </div>
-                <div className="text-xl font-bold text-green-600">
-                  {formatValue(device.type, deviceStats.data.reduce((sum, d: DeviceStatsDataPoint) => sum + (d.totalIndex || 0), 0))}
-                </div>
-                <div className="text-xs text-gray-500">Selected period</div>
-              </div>
-              
-              <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg shadow-sm p-4">
-                <div className="flex items-center gap-3 mb-2">
-                  <ChartBarIcon className="w-6 h-6 text-blue-500" />
-                  <h4 className="font-semibold text-gray-900 text-sm">Average per {getGranularity()}</h4>
-                </div>
-                <div className="text-xl font-bold text-blue-600">
-                  {formatValue(device.type, deviceStats.data.length > 0 ? deviceStats.data.reduce((sum, d: DeviceStatsDataPoint) => sum + (d.totalIndex || 0), 0) / deviceStats.data.length : 0)}
-                </div>
-                <div className="text-xs text-gray-500">Average consumption</div>
-              </div>
-              
-              <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg shadow-sm p-4">
-                <div className="flex items-center gap-3 mb-2">
-                  <ArrowTrendingUpIcon className="w-6 h-6 text-purple-500" />
-                  <h4 className="font-semibold text-gray-900 text-sm">Peak Consumption</h4>
-                </div>
-                <div className="text-xl font-bold text-purple-600">
-                  {formatValue(device.type, deviceStats.data.length > 0 ? Math.max(...deviceStats.data.map((d: DeviceStatsDataPoint) => d.totalIndex || 0)) : 0)}
-                </div>
-                <div className="text-xs text-gray-500">Highest {getGranularity()}ly usage</div>
-              </div>
-              
-              <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg shadow-sm p-4">
-                <div className="flex items-center gap-3 mb-2">
-                  <ClockIcon className="w-6 h-6 text-yellow-500" />
-                  <h4 className="font-semibold text-gray-900 text-sm">Data Points</h4>
-                </div>
-                <div className="text-xl font-bold text-yellow-600">
-                  {deviceStats.data.length}
-                </div>
-                <div className="text-xs text-gray-500">Data periods</div>
-              </div>
-              
-
-            </div>
-          </div>
-        )}
-        </div>
 
 
 
@@ -2613,6 +2564,196 @@ export default function DeviceDetailPage() {
             </div>
           </div>
         )}
+
+        {/* Device Consumption Charts - Moved below Water Metrics */}
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+          {/* Time Period Selector */}
+          <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4 mb-4">
+            <div className="flex items-center gap-2">
+              <CalendarIcon className="w-5 h-5 text-gray-500" />
+              <span className="text-sm font-medium text-gray-700">Time Period:</span>
+            </div>
+            <div className="flex flex-1 items-center">
+              <div className="flex flex-wrap gap-2 items-center">
+                {timePeriods.map((period) => (
+                  <button
+                    key={period.value}
+                    onClick={() => {
+                      setSelectedPeriod(period.value);
+                      setShowCustomPicker(period.value === 'custom');
+                    }}
+                    className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                      selectedPeriod === period.value
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                  >
+                    {period.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex-1" />
+            </div>
+            {showCustomPicker && (
+              <LocalizationProvider dateAdapter={AdapterDateFns}>
+                <DateTimePicker
+                  label="From"
+                  value={customFrom}
+                  onChange={setCustomFrom}
+                  slotProps={{ textField: { size: 'small' } }}
+                />
+                <span className="text-gray-500">to</span>
+                <DateTimePicker
+                  label="To"
+                  value={customTo}
+                  onChange={setCustomTo}
+                  slotProps={{ textField: { size: 'small' } }}
+                />
+              </LocalizationProvider>
+            )}
+          </div>
+
+          {/* Chart Display */}
+          <div className="mb-4 flex justify-between items-center">
+            <h3 className="text-lg font-semibold text-gray-900">
+              Daily Consumption Chart
+            </h3>
+            {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && chartData && chartData.length > 0 && (
+              <button
+                onClick={exportChartData}
+                className="px-3 py-1 text-sm rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-1"
+                title="Export chart data to CSV"
+              >
+                <ArrowDownTrayIcon className="w-4 h-4" />
+                Export Chart Data
+              </button>
+            )}
+          </div>
+          {chartType === 'line' ? (
+            <LineChart
+              xAxis={[{ 
+                data: chartLabels.map(d => new Date(d)), 
+                label: 'Date',
+                valueFormatter: (value: any) => {
+                  // Ensure we have a valid Date object
+                  const date = value instanceof Date ? value : new Date(value);
+                  if (isNaN(date.getTime())) {
+                    return 'Invalid Date';
+                  }
+                  return date.toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric',
+                    hour: getGranularity() === 'hour' ? '2-digit' : undefined,
+                    minute: getGranularity() === 'hour' ? '2-digit' : undefined
+                  });
+                }
+              }]}
+              series={[{ 
+                data: chartData, 
+                label: device?.type === 'energy' ? 'Energy' :
+                       device?.type === 'solar' ? 'Solar' :
+                       device?.type === 'water' ? 'Water' :
+                       device?.type === 'gas' ? 'Gas' : 'Consumption',
+                color: device?.type === 'energy' ? '#3B82F6' :
+                       device?.type === 'solar' ? '#22C55E' :
+                       device?.type === 'water' ? '#9333EA' :
+                       device?.type === 'gas' ? '#EF4444' : '#6366F1',
+                curve: 'linear',
+                area: true
+              }]}
+              height={350}
+              grid={{ vertical: true, horizontal: true }}
+            />
+          ) : (
+            <BarChart
+              xAxis={[{ 
+                data: chartLabels.map(d => {
+                  const date = new Date(d);
+                  return date.toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric',
+                    hour: getGranularity() === 'hour' ? '2-digit' : undefined,
+                    minute: getGranularity() === 'hour' ? '2-digit' : undefined
+                  });
+                }), 
+                label: 'Date' 
+              }]}
+              series={[{ 
+                data: chartData, 
+                label: device?.type === 'energy' ? 'Energy' :
+                       device?.type === 'solar' ? 'Solar' :
+                       device?.type === 'water' ? 'Water' :
+                       device?.type === 'gas' ? 'Gas' : 'Consumption',
+                color: device?.type === 'energy' ? '#3B82F6' :
+                       device?.type === 'solar' ? '#22C55E' :
+                       device?.type === 'water' ? '#9333EA' :
+                       device?.type === 'gas' ? '#EF4444' : '#6366F1'
+              }]}
+              height={350}
+            />
+          )}
+          
+          {/* Device Statistics with Consumption Analysis */}
+          {deviceStats && deviceStats.data.length > 0 && (
+            <div className="mt-6 pt-6 border-t border-gray-200">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Device Statistics ({getGranularity() === 'hour' ? 'Hourly' : getGranularity() === 'day' ? 'Daily' : getGranularity() === 'week' ? 'Weekly' : 'Monthly'} Data)
+                </h3>
+                <div className="text-sm text-gray-500">
+                  {deviceStats.data.length} data points
+                </div>
+              </div>
+              
+              {/* Summary Statistics */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg shadow-sm p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <ArrowTrendingUpIcon className="w-6 h-6 text-green-500" />
+                    <h4 className="font-semibold text-gray-900 text-sm">Total Consumption</h4>
+                  </div>
+                  <div className="text-xl font-bold text-green-600">
+                    {formatValue(device.type, deviceStats.data.reduce((sum, d: DeviceStatsDataPoint) => sum + (d.totalIndex || 0), 0))}
+                  </div>
+                  <div className="text-xs text-gray-500">Selected period</div>
+                </div>
+                
+                <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg shadow-sm p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <ChartBarIcon className="w-6 h-6 text-blue-500" />
+                    <h4 className="font-semibold text-gray-900 text-sm">Average per {getGranularity()}</h4>
+                  </div>
+                  <div className="text-xl font-bold text-blue-600">
+                    {formatValue(device.type, deviceStats.data.length > 0 ? deviceStats.data.reduce((sum, d: DeviceStatsDataPoint) => sum + (d.totalIndex || 0), 0) / deviceStats.data.length : 0)}
+                  </div>
+                  <div className="text-xs text-gray-500">Average consumption</div>
+                </div>
+                
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg shadow-sm p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <ArrowTrendingUpIcon className="w-6 h-6 text-purple-500" />
+                    <h4 className="font-semibold text-gray-900 text-sm">Peak Consumption</h4>
+                  </div>
+                  <div className="text-xl font-bold text-purple-600">
+                    {formatValue(device.type, deviceStats.data.length > 0 ? Math.max(...deviceStats.data.map((d: DeviceStatsDataPoint) => d.totalIndex || 0)) : 0)}
+                  </div>
+                  <div className="text-xs text-gray-500">Highest {getGranularity()}ly usage</div>
+                </div>
+                
+                <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg shadow-sm p-4">
+                  <div className="flex items-center gap-3 mb-2">
+                    <ClockIcon className="w-6 h-6 text-yellow-500" />
+                    <h4 className="font-semibold text-gray-900 text-sm">Data Points</h4>
+                  </div>
+                  <div className="text-xl font-bold text-yellow-600">
+                    {deviceStats.data.length}
+                  </div>
+                  <div className="text-xs text-gray-500">Data periods</div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </DashboardLayout>
   );

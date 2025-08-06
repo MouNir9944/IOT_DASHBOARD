@@ -26,6 +26,11 @@ const siteSchema = new mongoose.Schema({
     type: String,
     enum: ['manufacturing', 'farm', 'building', 'warehouse', 'office'],
     required: true
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: false // Not required for superadmin created sites
   }
 }, {
   timestamps: true

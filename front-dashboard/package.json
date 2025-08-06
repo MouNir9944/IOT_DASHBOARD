@@ -6,7 +6,17 @@
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "pm2:start": "pm2 start ecosystem.config.js",
+    "pm2:stop": "pm2 stop iot-dashboard-frontend",
+    "pm2:restart": "pm2 restart iot-dashboard-frontend",
+    "pm2:delete": "pm2 delete iot-dashboard-frontend",
+    "pm2:logs": "pm2 logs iot-dashboard-frontend",
+    "pm2:monit": "pm2 monit",
+    "pm2:status": "pm2 status",
+    "pm2:reload": "pm2 reload iot-dashboard-frontend",
+    "pm2:save": "pm2 save",
+    "pm2:resurrect": "pm2 resurrect"
   },
   "dependencies": {
     "@date-io/date-fns": "^3.2.1",

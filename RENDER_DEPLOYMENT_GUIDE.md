@@ -1,11 +1,32 @@
 # Render Deployment Guide for IoT Dashboard
 
 ## Overview
-This guide will help you deploy your IoT Dashboard to Render with proper WebSocket support.
+This guide will help you deploy your IoT Dashboard to Render with PM2 support for both backend and frontend.
+
+## Prerequisites
+
+1. **GitHub Repository**: Your code should be in a GitHub repository
+2. **Render Account**: Sign up at [render.com](https://render.com)
+3. **Environment Variables**: Prepare your environment variables
 
 ## Backend Deployment (backend_main_manager)
 
-### 1. Environment Variables
+### 1. Create Backend Service on Render
+
+1. **Go to Render Dashboard**
+2. **Click "New +" → "Web Service"**
+3. **Connect your GitHub repository**
+4. **Configure the service:**
+
+```
+Name: iot-dashboard-backend
+Environment: Node
+Build Command: npm install
+Start Command: npm start
+```
+
+### 2. Environment Variables for Backend
+
 Set these environment variables in your Render backend service:
 
 ```
@@ -15,151 +36,314 @@ MONGO_URI=your_mongodb_atlas_connection_string
 MQTT_BROKER_URL=your_mqtt_broker_url
 CORS_ORIGIN=https://your-frontend-app-name.onrender.com
 DEPLOYED_URL=https://your-backend-app-name.onrender.com
+JWT_SECRET=your_jwt_secret_key
 ```
 
-### 2. Build Command
-```
-npm install
-```
+### 3. Backend Configuration
 
-### 3. Start Command
-```
-npm start
-```
-
-### 4. Important Notes for Backend
-- The server will automatically use the PORT provided by Render
-- WebSocket server is configured to accept connections from the frontend URL
-- CORS is configured to allow your frontend domain
-- Self-ping mechanism keeps the server alive
+Your backend is already configured for Render deployment. The server will:
+- Use the PORT provided by Render
+- Configure CORS for your frontend domain
+- Handle WebSocket connections
+- Auto-restart on crashes
 
 ## Frontend Deployment (front-dashboard)
 
-### 1. Environment Variables
+### 1. Create Frontend Service on Render
+
+1. **Go to Render Dashboard**
+2. **Click "New +" → "Web Service"**
+3. **Connect your GitHub repository**
+4. **Configure the service:**
+
+```
+Name: iot-dashboard-frontend
+Environment: Node
+Root Directory: front-dashboard
+Build Command: npm install && npm run build
+Start Command: npm start
+```
+
+### 2. Environment Variables for Frontend
+
 Set these environment variables in your Render frontend service:
 
 ```
+NODE_ENV=production
+PORT=3000
 NEXT_PUBLIC_BACKEND_URL=https://your-backend-app-name.onrender.com
 ```
 
-### 2. Build Command
-```
-npm install && npm run build
-```
+### 3. Frontend PM2 Configuration for Render
 
-### 3. Start Command
-```
-npm start
-```
+Create a Render-specific PM2 configuration:
 
-### 4. Important Notes for Frontend
-- The WebSocket connection now uses the environment variable instead of hardcoded localhost
-- All API calls use the same environment variable for consistency
-
-## WebSocket Configuration
-
-### Backend Changes Made:
-1. **Enhanced CORS Configuration**: Added fallback and additional methods
-2. **Transport Configuration**: Explicitly enabled both WebSocket and polling transports
-3. **Environment Variable Support**: Uses CORS_ORIGIN environment variable
-
-### Frontend Changes Made:
-1. **Dynamic WebSocket URL**: Now uses `NEXT_PUBLIC_BACKEND_URL` instead of hardcoded localhost
-2. **Fallback Support**: Falls back to localhost for local development
-
-## Troubleshooting WebSocket Issues
-
-### 1. Check Environment Variables
-Ensure both services have the correct environment variables set:
-- Backend: `CORS_ORIGIN` should point to your frontend URL
-- Frontend: `NEXT_PUBLIC_BACKEND_URL` should point to your backend URL
-
-### 2. Verify URLs
-- Backend URL: `https://your-backend-app-name.onrender.com`
-- Frontend URL: `https://your-frontend-app-name.onrender.com`
-
-### 3. Check Browser Console
-Look for WebSocket connection errors in the browser console:
-- Connection refused errors
-- CORS errors
-- Transport errors
-
-### 4. Test WebSocket Connection
-You can test the WebSocket connection using browser dev tools:
 ```javascript
-const socket = io('https://your-backend-app-name.onrender.com');
-socket.on('connect', () => console.log('Connected!'));
-socket.on('connect_error', (error) => console.log('Connection error:', error));
+// front-dashboard/ecosystem.render.js
+module.exports = {
+  apps: [
+    {
+      name: 'iot-dashboard-frontend',
+      script: 'npm',
+      args: 'start',
+      cwd: './front-dashboard',
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '512M', // Lower for Render free tier
+      env: {
+        NODE_ENV: 'production',
+        PORT: process.env.PORT || 3000,
+        NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL,
+        NEXT_TELEMETRY_DISABLED: '1',
+        NODE_OPTIONS: '--max-old-space-size=512'
+      },
+      error_file: './logs/err.log',
+      out_file: './logs/out.log',
+      log_file: './logs/combined.log',
+      time: true,
+      max_restarts: 5,
+      min_uptime: '10s',
+      health_check_grace_period: 3000,
+      kill_timeout: 3000,
+      listen_timeout: 5000
+    }
+  ]
+};
 ```
 
-## Common Issues and Solutions
+## Step-by-Step Deployment Process
 
-### Issue: WebSocket Connection Refused
-**Solution**: 
-- Check that your backend service is running
-- Verify the `NEXT_PUBLIC_BACKEND_URL` environment variable is correct
-- Ensure CORS_ORIGIN is set to your frontend URL
+### Step 1: Prepare Your Repository
 
-### Issue: CORS Errors
-**Solution**:
-- Verify CORS_ORIGIN environment variable in backend
-- Check that the frontend URL is exactly correct (including https://)
+1. **Ensure all files are committed to GitHub**
+2. **Check that your package.json files are correct**
+3. **Verify environment variables are ready**
 
-### Issue: WebSocket Transport Errors
-**Solution**:
-- The server now supports both WebSocket and polling transports
-- Check that your Render service allows WebSocket connections
+### Step 2: Deploy Backend
 
-### Issue: Real-time Data Not Updating
-**Solution**:
-- Check MQTT broker connection
-- Verify device subscriptions are working
-- Check browser console for WebSocket errors
+1. **Create Web Service on Render**
+2. **Set environment variables**
+3. **Deploy and wait for build to complete**
+4. **Note the backend URL**
 
-## Monitoring and Debugging
+### Step 3: Deploy Frontend
 
-### Backend Logs
-Monitor your backend logs in Render dashboard for:
-- WebSocket connection messages
-- MQTT connection status
-- Device subscription events
+1. **Create Web Service on Render**
+2. **Set environment variables (including backend URL)**
+3. **Deploy and wait for build to complete**
+4. **Test the connection**
 
-### Frontend Logs
-Check browser console for:
-- WebSocket connection status
-- Real-time data updates
-- Connection errors
+### Step 4: Configure CORS
 
-## Security Considerations
+Update your backend CORS settings to allow your frontend domain:
 
-1. **CORS Configuration**: Only allow your specific frontend domain
-2. **Environment Variables**: Never commit sensitive data to version control
-3. **MQTT Security**: Use secure MQTT connections (mqtts://) in production
-4. **Rate Limiting**: Already configured in the backend
+```javascript
+// In backend_main_manager/server.js
+const corsOptions = {
+  origin: [
+    'https://your-frontend-app-name.onrender.com',
+    'http://localhost:3000' // For local development
+  ],
+  credentials: true
+};
+```
 
-## Performance Optimization
+## Environment Variables Reference
 
-1. **WebSocket Transports**: Both WebSocket and polling are enabled for maximum compatibility
-2. **Connection Pooling**: MongoDB connection pooling is configured
-3. **Self-ping**: Keeps the server alive on Render's free tier
-4. **Error Handling**: Comprehensive error handling for all connections
+### Backend Environment Variables
+
+```bash
+# Required
+NODE_ENV=production
+PORT=10000
+MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/iot_dashboard
+MQTT_BROKER_URL=mqtt://your-mqtt-broker.com:1883
+CORS_ORIGIN=https://your-frontend-app-name.onrender.com
+DEPLOYED_URL=https://your-backend-app-name.onrender.com
+JWT_SECRET=your-super-secret-jwt-key
+
+# Optional
+MQTT_USERNAME=your_mqtt_username
+MQTT_PASSWORD=your_mqtt_password
+```
+
+### Frontend Environment Variables
+
+```bash
+# Required
+NODE_ENV=production
+PORT=3000
+NEXT_PUBLIC_BACKEND_URL=https://your-backend-app-name.onrender.com
+
+# Optional
+NEXT_TELEMETRY_DISABLED=1
+```
+
+## Render-Specific Optimizations
+
+### 1. Memory Optimization
+
+For Render's free tier limitations:
+
+```javascript
+// Backend optimization
+max_memory_restart: '512M'
+
+// Frontend optimization  
+max_memory_restart: '512M'
+NODE_OPTIONS: '--max-old-space-size=512'
+```
+
+### 2. Health Checks
+
+Add health check endpoints:
+
+```javascript
+// Backend health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Frontend health check (already created)
+// Available at /api/health
+```
+
+### 3. Auto-Restart Configuration
+
+```javascript
+// For both services
+autorestart: true,
+max_restarts: 5,
+min_uptime: '10s'
+```
+
+## Troubleshooting Render Deployment
+
+### Common Issues
+
+1. **Build Failures**
+   ```bash
+   # Check build logs in Render dashboard
+   # Ensure all dependencies are in package.json
+   # Verify Node.js version compatibility
+   ```
+
+2. **Environment Variables**
+   ```bash
+   # Double-check all environment variables are set
+   # Ensure no typos in variable names
+   # Verify URLs are correct
+   ```
+
+3. **CORS Errors**
+   ```bash
+   # Check CORS_ORIGIN matches your frontend URL exactly
+   # Include protocol (https://)
+   # Add localhost for development
+   ```
+
+4. **WebSocket Connection Issues**
+   ```bash
+   # Verify WebSocket URL in frontend
+   # Check CORS settings for WebSocket
+   # Ensure backend is accessible
+   ```
+
+### Debug Commands
+
+```bash
+# Check backend logs
+# Go to Render dashboard → Your backend service → Logs
+
+# Check frontend logs  
+# Go to Render dashboard → Your frontend service → Logs
+
+# Test backend health
+curl https://your-backend-app-name.onrender.com/health
+
+# Test frontend health
+curl https://your-frontend-app-name.onrender.com/api/health
+```
+
+## Monitoring and Maintenance
+
+### 1. Render Dashboard Monitoring
+
+- **Uptime**: Monitor service status
+- **Logs**: View real-time logs
+- **Metrics**: CPU and memory usage
+- **Deployments**: Track deployment history
+
+### 2. Custom Domain (Optional)
+
+1. **Add custom domain in Render dashboard**
+2. **Configure DNS records**
+3. **Update CORS settings**
+4. **Update environment variables**
+
+### 3. SSL/HTTPS
+
+- **Automatic**: Render provides SSL certificates
+- **Custom**: Upload your own certificates
+- **Redirect**: HTTP to HTTPS redirect
+
+## Cost Optimization
+
+### Free Tier Limitations
+
+- **Backend**: 750 hours/month
+- **Frontend**: 750 hours/month
+- **Memory**: 512MB per service
+- **Bandwidth**: 100GB/month
+
+### Paid Tier Benefits
+
+- **Unlimited**: No time restrictions
+- **More Memory**: Up to 8GB
+- **Custom Domains**: Multiple domains
+- **Priority Support**: Faster response times
+
+## Security Best Practices
+
+1. **Environment Variables**: Never commit secrets
+2. **CORS**: Restrict to specific domains
+3. **JWT Secrets**: Use strong, unique secrets
+4. **Database**: Use MongoDB Atlas with IP restrictions
+5. **MQTT**: Use secure MQTT connections
 
 ## Deployment Checklist
 
-- [ ] Backend environment variables set
-- [ ] Frontend environment variables set
-- [ ] Both services deployed and running
-- [ ] WebSocket connection tested
-- [ ] Real-time data flowing
-- [ ] CORS errors resolved
-- [ ] MQTT connection working
-- [ ] Device subscriptions working
+### Backend Checklist
+- [ ] MongoDB Atlas connection string
+- [ ] MQTT broker URL configured
+- [ ] JWT secret set
+- [ ] CORS origin configured
+- [ ] Environment variables set
+- [ ] Service deployed and running
+- [ ] Health check endpoint working
+
+### Frontend Checklist
+- [ ] Backend URL configured
+- [ ] Environment variables set
+- [ ] Build completed successfully
+- [ ] Service deployed and running
+- [ ] Health check endpoint working
+- [ ] WebSocket connection established
 
 ## Support
 
-If you continue to have WebSocket issues after following this guide:
+For Render-specific issues:
+1. **Check Render documentation**: [docs.render.com](https://docs.render.com)
+2. **View service logs**: Render dashboard → Logs
+3. **Contact Render support**: Available in dashboard
+4. **Community forum**: [community.render.com](https://community.render.com)
 
-1. Check Render service logs for errors
-2. Verify all environment variables are set correctly
-3. Test the WebSocket connection manually
-4. Ensure both services are running and accessible 
+## Next Steps
+
+After successful deployment:
+1. **Test all functionality**
+2. **Monitor performance**
+3. **Set up alerts**
+4. **Configure custom domain (optional)**
+5. **Set up monitoring tools** 

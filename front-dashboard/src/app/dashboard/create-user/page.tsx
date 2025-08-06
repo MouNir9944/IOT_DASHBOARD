@@ -23,6 +23,26 @@ export default function CreateUserPage() {
   const [editingUser, setEditingUser] = useState<any | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
+  const [apiStatus, setApiStatus] = useState<string>('checking');
+
+  // Check API health
+  useEffect(() => {
+    console.log('Checking API health at:', API_URL);
+    fetch(`${API_URL}/api/sites`)
+      .then(res => {
+        if (res.ok) {
+          setApiStatus('connected');
+          console.log('✅ API is accessible');
+        } else {
+          setApiStatus('error');
+          console.log('❌ API returned status:', res.status);
+        }
+      })
+      .catch(err => {
+        setApiStatus('error');
+        console.error('❌ API connection failed:', err);
+      });
+  }, []);
 
   if (status === 'loading') return <div className="p-6">Loading...</div>;
   if (
@@ -40,32 +60,41 @@ export default function CreateUserPage() {
     if (session.user.role === 'admin') {
       url = `${API_URL}/api/sites/user/${session.user.id}`;
     }
+    console.log('Fetching sites from:', url);
     fetch(url)
       .then(res => {
-        if (!res.ok) {
-          throw new Error(`HTTP error! status: ${res.status}`);
-        }
-        return res.json();
-      })
-      .then(data => setAllSites(data))
-      .catch(err => {
-        console.error('Error fetching sites:', err);
-        setError('Failed to fetch sites');
-      });
-  }, [session]);
-
-  // Fetch all users, sending session role as query param
-  useEffect(() => {
-    if (!session?.user?.role) return;
-    fetch(`${API_URL}/api/users?role=${session.user.role}`)
-      .then(res => {
+        console.log('Sites API response status:', res.status);
         if (!res.ok) {
           throw new Error(`HTTP error! status: ${res.status}`);
         }
         return res.json();
       })
       .then(data => {
-        console.log('Fetched users:', data);
+        console.log('Sites API response:', data);
+        setAllSites(Array.isArray(data) ? data : []);
+      })
+      .catch(err => {
+        console.error('Error fetching sites:', err);
+        setError('Failed to fetch sites');
+        setAllSites([]);
+      });
+  }, [session]);
+
+  // Fetch all users, sending session role as query param
+  useEffect(() => {
+    if (!session?.user?.role) return;
+    const url = `${API_URL}/api/users?role=${session.user.role}`;
+    console.log('Fetching users from:', url);
+    fetch(url)
+      .then(res => {
+        console.log('Users API response status:', res.status);
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then(data => {
+        console.log('Users API response:', data);
         if (Array.isArray(data)) {
           setUsers(data);
         } else {
@@ -96,15 +125,20 @@ export default function CreateUserPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_URL}/api/users/${userId}`, {
+      const url = `${API_URL}/api/users/${userId}`;
+      console.log('Deleting user at:', url);
+      const res = await fetch(url, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
       });
+      console.log('Delete response status:', res.status);
       const data = await res.json();
+      console.log('Delete response data:', data);
       if (!res.ok) throw new Error(data.error || 'Failed to delete user');
       setUsers(users.filter(u => u._id !== userId));
       setSuccess('User deleted successfully!');
     } catch (err: any) {
+      console.error('Error in handleDelete:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -118,24 +152,34 @@ export default function CreateUserPage() {
     setSuccess('');
     setError('');
     const payload = { name, email, password, role, sites };
+    console.log('Submitting payload:', payload);
+    
     try {
       let res: Response, data: any;
       if (editingUser) {
-        res = await fetch(`${API_URL}/api/users/${editingUser._id}`, {
+        const url = `${API_URL}/api/users/${editingUser._id}`;
+        console.log('Updating user at:', url);
+        res = await fetch(url, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
+        console.log('Update response status:', res.status);
         data = await res.json();
+        console.log('Update response data:', data);
         if (!res.ok) throw new Error(data.error || 'Failed to update user');
         setUsers(users.map(u => (u._id === editingUser._id ? data : u)));
       } else {
-        res = await fetch(`${API_URL}/api/users`, {
+        const url = `${API_URL}/api/users`;
+        console.log('Creating user at:', url);
+        res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
+        console.log('Create response status:', res.status);
         data = await res.json();
+        console.log('Create response data:', data);
         if (!res.ok) throw new Error(data.error || 'Failed to create user');
         // The API now returns the user object directly
         setUsers([...users, data]);
@@ -150,6 +194,7 @@ export default function CreateUserPage() {
       handleAfterUserChange();
 
     } catch (err: any) {
+      console.error('Error in handleSubmit:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -191,6 +236,18 @@ export default function CreateUserPage() {
 
   return (
     <DashboardLayout user={user}>
+      {/* API Status Indicator */}
+      <div className="flex justify-center mt-4 mb-2">
+        <div className={`px-3 py-1 rounded text-sm font-medium ${
+          apiStatus === 'connected' ? 'bg-green-100 text-green-800' :
+          apiStatus === 'error' ? 'bg-red-100 text-red-800' :
+          'bg-yellow-100 text-yellow-800'
+        }`}>
+          API Status: {apiStatus === 'connected' ? 'Connected' : 
+                      apiStatus === 'error' ? 'Error' : 'Checking...'}
+        </div>
+      </div>
+      
       <div className="flex justify-center mt-6 mb-4 w-full px-2 sm:px-0">
         <button
           className="bg-blue-600 text-white py-2 px-4 rounded font-semibold hover:bg-blue-700 transition w-full max-w-xs sm:max-w-md"
@@ -311,6 +368,20 @@ export default function CreateUserPage() {
           </div>
         </div>
       )}
+      {/* Error Display */}
+      {error && (
+        <div className="w-full mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+          <strong>Error:</strong> {error}
+        </div>
+      )}
+      
+      {/* Success Display */}
+      {success && (
+        <div className="w-full mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+          <strong>Success:</strong> {success}
+        </div>
+      )}
+      
       {/* Users Table */}
       <div className="w-full mt-6 bg-white p-2 sm:p-8 rounded-xl shadow-lg overflow-x-auto">
         <h2 className="text-xl font-bold mb-4 text-blue-700">Users</h2>

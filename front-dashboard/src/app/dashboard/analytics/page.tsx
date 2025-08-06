@@ -60,14 +60,36 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (!session?.user) return;
     const fetchSites = async () => {
-      let url = `${API_URL}/sites`;
-      if (session.user.role !== 'superadmin') {
-        url = `${API_URL}/sites/user/${session.user.id}`;
+      try {
+        let url = `${API_URL}`;
+        if (session.user.role !== 'superadmin') {
+          url = `${API_URL}/user/${session.user.id}`;
+        }
+        console.log('Fetching sites from URL:', url);
+        const res = await fetch(url);
+        console.log('Sites API response status:', res.status);
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error('Sites API error response:', errorText);
+          throw new Error(`Failed to fetch sites: ${res.status} - ${errorText}`);
+        }
+        const data = await res.json();
+        console.log('Sites API raw response:', data);
+        // Ensure data is an array
+        if (Array.isArray(data)) {
+          setSites(data);
+          setSelectedSites(data.map((s: any) => s._id)); // default: all sites
+          console.log('Fetched sites:', data);
+        } else {
+          console.error('Sites API returned non-array data:', data);
+          setSites([]);
+          setSelectedSites([]);
+        }
+      } catch (error) {
+        console.error('Error fetching sites:', error);
+        setSites([]);
+        setSelectedSites([]);
       }
-      const res = await fetch(url);
-      const data = await res.json();
-      setSites(data);
-      setSelectedSites(data.map((s: any) => s._id)); // default: all sites
     };
     fetchSites();
   }, [session]);
@@ -82,7 +104,7 @@ export default function AnalyticsPage() {
         from = customFrom.toISOString();
         to = customTo.toISOString();
       }
-      const res = await fetch(`${API_URL}/data/global/${metric}/compare`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/global/${metric}/compare`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ siteIds: selectedSites, from, to, granularity })
@@ -162,13 +184,13 @@ export default function AnalyticsPage() {
                 onChange={e => setSelectedSites(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
                 input={<OutlinedInput label="Sites" />}
                 renderValue={selected =>
-                  sites.filter(s => selected.includes(s._id)).map(s => s.name).join(', ')
+                  sites.filter(s => selected.includes(s._id)).map(s => s.name || 'Unknown Site').join(', ')
                 }
               >
                 {sites.map(site => (
                   <MenuItem key={site._id} value={site._id}>
                     <Checkbox checked={selectedSites.indexOf(site._id) > -1} />
-                    <ListItemText primary={site.name} />
+                    <ListItemText primary={site.name || 'Unknown Site'} />
                   </MenuItem>
                 ))}
               </Select>

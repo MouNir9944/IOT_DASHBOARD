@@ -13,7 +13,7 @@ import {
   FireIcon
 } from '@heroicons/react/24/outline';
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites'; // TODO: change to /api/sites/user/{userId}   
 
 export default function AnalyticsPage() {
   const { data: session, status } = useSession();
@@ -36,7 +36,7 @@ export default function AnalyticsPage() {
   return (
     <DashboardLayout user={user}>
       <div className="p-8 text-center text-xl text-gray-700 font-semibold">
-        Analytics coming soon!
+      notifications coming soon!
       </div>
     </DashboardLayout>
   );

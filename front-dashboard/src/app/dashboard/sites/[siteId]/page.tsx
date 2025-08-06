@@ -1077,24 +1077,24 @@ export default function SiteDetailPage() {
           </div>
         )}
         {/* Devices Section */}  
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+        <div className="bg-white rounded-lg shadow p-4 sm:p-6 relative">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Devices</h3>
-            {/* Floating Plus Button for Add Device (only for canConfigure) */}
-            {canConfigure && (
-              <button
-                onClick={openCreateDeviceModal}
-                className="bg-blue-600 text-white rounded-full w-10 h-10 flex items-center justify-center shadow-lg hover:bg-blue-700 transition-colors text-2xl"
-                title="Add Device"
-                style={{ position: 'absolute', right: '2rem', bottom: '2rem', zIndex: 10 }}
-              >
-                <span className="sr-only">Add Device</span>
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                </svg>
-              </button>
-            )}
           </div>
+          {/* Floating Plus Button for Add Device (only for canConfigure) */}
+          {canConfigure && (
+            <button
+              onClick={openCreateDeviceModal}
+              className="bg-blue-600 text-white rounded-full w-10 h-10 flex items-center justify-center shadow-lg hover:bg-blue-700 transition-colors text-2xl fixed"
+              title="Add Device"
+              style={{ position: 'fixed', right: '2rem', bottom: '2rem', zIndex: 1000 }}
+            >
+              <span className="sr-only">Add Device</span>
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </button>
+          )}
           {site.devices && site.devices.length > 0 ? (
             <div className="relative max-h-[32rem] overflow-y-auto">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 album-grid">

@@ -236,17 +236,7 @@ export default function CreateUserPage() {
 
   return (
     <DashboardLayout user={user}>
-      {/* API Status Indicator */}
-      <div className="flex justify-center mt-4 mb-2">
-        <div className={`px-3 py-1 rounded text-sm font-medium ${
-          apiStatus === 'connected' ? 'bg-green-100 text-green-800' :
-          apiStatus === 'error' ? 'bg-red-100 text-red-800' :
-          'bg-yellow-100 text-yellow-800'
-        }`}>
-          API Status: {apiStatus === 'connected' ? 'Connected' : 
-                      apiStatus === 'error' ? 'Error' : 'Checking...'}
-        </div>
-      </div>
+
       
       <div className="flex justify-center mt-6 mb-4 w-full px-2 sm:px-0">
         <button

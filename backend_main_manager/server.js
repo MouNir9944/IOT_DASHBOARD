@@ -567,18 +567,50 @@ const pingInterval = setInterval(async () => {
     const response = await fetch(url, {
       method: 'GET',
       headers: {
-        'User-Agent': 'Render-Keep-Alive/1.0'
+        'User-Agent': 'Render-Keep-Alive/1.0',
+        'Accept': 'application/json',
+        'Cache-Control': 'no-cache'
       },
-      timeout: 10000
+      timeout: 15000 // Increased timeout
     });
     
     if (response.ok) {
+      const data = await response.json().catch(() => ({}));
       console.log('✅ Self-ping successful - Main Server kept awake');
+      console.log(`📊 Ping response: ${data.message || 'OK'}`);
     } else {
-      console.log('⚠️ Self-ping failed - Response not OK:', response.status);
+      console.log(`⚠️ Self-ping failed - Response not OK: ${response.status} ${response.statusText}`);
+      
+      // Try alternative health endpoint if ping fails
+      try {
+        const healthResponse = await fetch(`${baseUrl}/health`, {
+          method: 'GET',
+          headers: {
+            'User-Agent': 'Render-Keep-Alive/1.0',
+            'Accept': 'application/json'
+          },
+          timeout: 10000
+        });
+        
+        if (healthResponse.ok) {
+          console.log('✅ Alternative health check successful');
+        } else {
+          console.log(`⚠️ Alternative health check also failed: ${healthResponse.status}`);
+        }
+      } catch (healthError) {
+        console.log('❌ Alternative health check failed:', healthError.message);
+      }
     }
   } catch (error) {
     console.log('❌ Self-ping failed:', error.message);
+    
+    // Log additional error details for debugging
+    if (error.code) {
+      console.log(`🔍 Error code: ${error.code}`);
+    }
+    if (error.syscall) {
+      console.log(`🔍 System call: ${error.syscall}`);
+    }
   }
 }, 5 * 60 * 1000); // Ping every 5 minutes
 
@@ -586,13 +618,29 @@ const pingInterval = setInterval(async () => {
 const internalPingInterval = setInterval(() => {
   console.log('🔄 Internal keep-alive ping - Server is running');
   
+  // Get detailed memory usage
+  const memUsage = process.memoryUsage();
+  
   // Log server status
   console.log(`📊 Server Status:`);
   console.log(`   - MQTT Connected: ${mqttClient ? mqttClient.connected : false}`);
   console.log(`   - Device Count: ${Object.keys(deviceMap).length}`);
   console.log(`   - Active Subscriptions: ${activeSubscriptions.size}`);
   console.log(`   - Connected Clients: ${clientSubscriptions.size}`);
-  console.log(`   - Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
+  console.log(`   - Memory Usage: ${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`);
+  console.log(`   - Memory Total: ${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`);
+  console.log(`   - External Memory: ${Math.round(memUsage.external / 1024 / 1024)}MB`);
+  console.log(`   - RSS: ${Math.round(memUsage.rss / 1024 / 1024)}MB`);
+  
+  // Check for potential issues
+  const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+  if (heapUsedMB > 200) {
+    console.log('⚠️  WARNING: High memory usage detected!');
+  }
+  
+  if (clientSubscriptions.size > 50) {
+    console.log('⚠️  WARNING: High number of client subscriptions!');
+  }
   
   // Try to reconnect MQTT if disconnected
   if (mqttClient && !mqttClient.connected && mqttReconnectAttempts < MAX_MQTT_RECONNECT_ATTEMPTS) {
@@ -601,14 +649,24 @@ const internalPingInterval = setInterval(() => {
   }
   
   // Clean up stale client subscriptions (clients that disconnected without proper cleanup)
-  const now = Date.now();
+  let cleanedCount = 0;
   for (const [clientId, devices] of clientSubscriptions.entries()) {
     const socket = io.sockets.sockets.get(clientId);
     if (!socket || !socket.connected) {
       console.log(`🧹 Cleaning up stale client subscription: ${clientId}`);
       clientSubscriptions.delete(clientId);
+      cleanedCount++;
     }
   }
+  
+  if (cleanedCount > 0) {
+    console.log(`🧹 Cleaned up ${cleanedCount} stale client subscriptions`);
+  }
+  
+  // Log uptime
+  const uptimeHours = Math.round(process.uptime() / 3600);
+  console.log(`⏰ Server uptime: ${uptimeHours} hours`);
+  
 }, 10 * 60 * 1000); // Internal ping every 10 minutes
 
 // Memory cleanup interval

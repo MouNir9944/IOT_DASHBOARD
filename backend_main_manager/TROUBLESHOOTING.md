@@ -68,6 +68,11 @@
 npm run monitor
 ```
 
+### Check Deployment Health
+```bash
+npm run deploy-check
+```
+
 ### Check Memory Usage
 ```bash
 curl http://localhost:5000/health | jq '.memory'

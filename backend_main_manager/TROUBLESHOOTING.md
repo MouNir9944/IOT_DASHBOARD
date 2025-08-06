@@ -61,6 +61,24 @@
 - Check for firewall/network issues
 - Restart server to clear connection state
 
+### 5. Rate Limiting Issues (429 Errors)
+
+**Symptoms:**
+- "429 Too Many Requests" errors in logs
+- Self-ping failures
+- Health check failures
+
+**Causes:**
+- Too many requests to the server
+- Render's rate limiting
+- Excessive health checks
+
+**Solutions:**
+- The server now automatically handles rate limiting
+- Self-ping will pause when rate limited
+- Use `npm run start:prod` for production
+- Monitor logs for rate limiting messages
+
 ## Monitoring Commands
 
 ### Check Server Health

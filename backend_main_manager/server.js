@@ -550,12 +550,21 @@ server.listen(PORT, () => {
 });
 
 // Self-ping mechanism to keep server running when deployed on Render
+let consecutiveFailures = 0;
+const MAX_CONSECUTIVE_FAILURES = 3;
+
 const pingInterval = setInterval(async () => {
   const baseUrl = process.env.DEPLOYED_URL;
   
   // Check if DEPLOYED_URL is set
   if (!baseUrl) {
     console.log('⚠️ DEPLOYED_URL not set, skipping self-ping');
+    return;
+  }
+  
+  // Skip ping if we've had too many consecutive failures (rate limiting)
+  if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+    console.log(`⚠️ Skipping self-ping due to ${consecutiveFailures} consecutive failures (likely rate limited)`);
     return;
   }
   
@@ -571,38 +580,55 @@ const pingInterval = setInterval(async () => {
         'Accept': 'application/json',
         'Cache-Control': 'no-cache'
       },
-      timeout: 15000 // Increased timeout
+      timeout: 15000
     });
     
     if (response.ok) {
       const data = await response.json().catch(() => ({}));
       console.log('✅ Self-ping successful - Main Server kept awake');
       console.log(`📊 Ping response: ${data.message || 'OK'}`);
+      consecutiveFailures = 0; // Reset failure counter on success
     } else {
       console.log(`⚠️ Self-ping failed - Response not OK: ${response.status} ${response.statusText}`);
+      consecutiveFailures++;
       
-      // Try alternative health endpoint if ping fails
-      try {
-        const healthResponse = await fetch(`${baseUrl}/health`, {
-          method: 'GET',
-          headers: {
-            'User-Agent': 'Render-Keep-Alive/1.0',
-            'Accept': 'application/json'
-          },
-          timeout: 10000
-        });
-        
-        if (healthResponse.ok) {
-          console.log('✅ Alternative health check successful');
-        } else {
-          console.log(`⚠️ Alternative health check also failed: ${healthResponse.status}`);
+      // If we get rate limited (429), stop trying for a while
+      if (response.status === 429) {
+        console.log('🚫 Rate limited by Render, will skip next few pings');
+        consecutiveFailures = MAX_CONSECUTIVE_FAILURES; // Force skip
+        return;
+      }
+      
+      // Only try alternative health check for non-rate-limit errors
+      if (response.status !== 429) {
+        try {
+          const healthResponse = await fetch(`${baseUrl}/health`, {
+            method: 'GET',
+            headers: {
+              'User-Agent': 'Render-Keep-Alive/1.0',
+              'Accept': 'application/json'
+            },
+            timeout: 10000
+          });
+          
+          if (healthResponse.ok) {
+            console.log('✅ Alternative health check successful');
+            consecutiveFailures = 0; // Reset on success
+          } else {
+            console.log(`⚠️ Alternative health check also failed: ${healthResponse.status}`);
+            if (healthResponse.status === 429) {
+              console.log('🚫 Rate limited on health check too');
+              consecutiveFailures = MAX_CONSECUTIVE_FAILURES;
+            }
+          }
+        } catch (healthError) {
+          console.log('❌ Alternative health check failed:', healthError.message);
         }
-      } catch (healthError) {
-        console.log('❌ Alternative health check failed:', healthError.message);
       }
     }
   } catch (error) {
     console.log('❌ Self-ping failed:', error.message);
+    consecutiveFailures++;
     
     // Log additional error details for debugging
     if (error.code) {
@@ -666,6 +692,12 @@ const internalPingInterval = setInterval(() => {
   // Log uptime
   const uptimeHours = Math.round(process.uptime() / 3600);
   console.log(`⏰ Server uptime: ${uptimeHours} hours`);
+  
+  // Reset consecutive failures counter periodically to allow self-ping to resume
+  if (consecutiveFailures > 0) {
+    console.log(`🔄 Resetting consecutive failures counter (was ${consecutiveFailures})`);
+    consecutiveFailures = 0;
+  }
   
 }, 10 * 60 * 1000); // Internal ping every 10 minutes
 

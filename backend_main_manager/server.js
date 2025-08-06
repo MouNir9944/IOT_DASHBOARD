@@ -25,10 +25,12 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN, // Frontend URL  
-    methods: ["GET", "POST"],
-    credentials: true
-  }
+    origin: process.env.CORS_ORIGIN || "*", // Frontend URL with fallback
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization']
+  },
+  transports: ['websocket', 'polling']
 });
 
 // WebSocket connection handling

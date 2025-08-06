@@ -4,7 +4,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites'; // TODO: change to /api/sites/user/{userId} 
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL; // Base API URL
 
 export default function CreateUserPage() {
   const { data: session, status } = useSession();
@@ -36,29 +36,47 @@ export default function CreateUserPage() {
   // Fetch all sites
   useEffect(() => {
     if (!session?.user) return;
-    let url = `${API_URL}/sites`;
+    let url = `${API_URL}/api/sites`;
     if (session.user.role === 'admin') {
-      url = `${API_URL}/sites/user/${session.user.id}`;
+      url = `${API_URL}/api/sites/user/${session.user.id}`;
     }
     fetch(url)
-      .then(res => res.json())
-      .then(data => setAllSites(data));
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json();
+      })
+      .then(data => setAllSites(data))
+      .catch(err => {
+        console.error('Error fetching sites:', err);
+        setError('Failed to fetch sites');
+      });
   }, [session]);
 
   // Fetch all users, sending session role as query param
   useEffect(() => {
     if (!session?.user?.role) return;
-    fetch(`${API_URL}/users?role=${session.user.role}`)
-      .then(res => res.json())
+    fetch(`${API_URL}/api/users?role=${session.user.role}`)
+      .then(res => {
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        return res.json();
+      })
       .then(data => {
         console.log('Fetched users:', data);
         if (Array.isArray(data)) {
           setUsers(data);
-
         } else {
           setUsers([]);
           setError(data.error || 'Failed to fetch users');
         }
+      })
+      .catch(err => {
+        console.error('Error fetching users:', err);
+        setError('Failed to fetch users');
+        setUsers([]);
       });
   }, [session]);
 
@@ -78,7 +96,7 @@ export default function CreateUserPage() {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_URL}/users/${userId}`, {
+      const res = await fetch(`${API_URL}/api/users/${userId}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -103,7 +121,7 @@ export default function CreateUserPage() {
     try {
       let res: Response, data: any;
       if (editingUser) {
-        res = await fetch(`${API_URL}/users/${editingUser._id}`, {
+        res = await fetch(`${API_URL}/api/users/${editingUser._id}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -112,13 +130,14 @@ export default function CreateUserPage() {
         if (!res.ok) throw new Error(data.error || 'Failed to update user');
         setUsers(users.map(u => (u._id === editingUser._id ? data : u)));
       } else {
-        res = await fetch(`${API_URL}/users`, {
+        res = await fetch(`${API_URL}/api/users`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         });
         data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to create user');
+        // The API now returns the user object directly
         setUsers([...users, data]);
       }
       setSuccess('User updated successfully!');

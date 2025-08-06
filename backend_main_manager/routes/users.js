@@ -28,10 +28,7 @@ router.get('/', async (req, res) => {
 
 // POST /api/users - create user (superadmin only)
 router.post('/', async (req, res) => {
-
   try {
-    const requester = req.user;
-
     const { name, email, password, role, sites } = req.body;
     if (!name || !email || !password || !role) {
       return res.status(400).json({ error: 'Missing required fields' });
@@ -41,10 +38,10 @@ router.post('/', async (req, res) => {
       return res.status(409).json({ error: 'User already exists' });
     }
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, password: hashedPassword, role,sites });
+    const user = new User({ name, email, password: hashedPassword, role, sites });
     await user.save();
 
-    res.status(201).json({ user });
+    res.status(201).json(user);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -53,7 +50,6 @@ router.post('/', async (req, res) => {
 // PUT /api/users/:id - update user
 router.put('/:id', async (req, res) => {
   try {
-    const requester = req.user;
     const user = await User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
@@ -78,8 +74,6 @@ router.put('/:id', async (req, res) => {
 // DELETE /api/users/:id - delete user
 router.delete('/:id', async (req, res) => {
   try {
-    const requester = req.user;
-
     const user = await User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });

@@ -19,7 +19,6 @@ import deviceRoutes from './routes/device.js';
 // Load environment variables
 dotenv.config();
 
-
 const app = express();
 
 // Create HTTP server and Socket.IO server
@@ -31,7 +30,11 @@ const io = new Server(server, {
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization']
   },
-  transports: ['websocket', 'polling']
+  transports: ['websocket', 'polling'],
+  // Add connection limits to prevent memory leaks
+  maxHttpBufferSize: 1e6, // 1MB
+  pingTimeout: 60000,
+  pingInterval: 25000
 });
 
 // WebSocket connection handling
@@ -43,87 +46,100 @@ io.on('connection', (socket) => {
   
   // Handle device subscription
   socket.on('subscribe-device', (deviceId) => {
-    console.log(`📡 Client ${socket.id} subscribing to device: ${deviceId}`);
-    
-    // Check if device exists in our map
-    if (!deviceMap[deviceId]) {
-      console.warn(`⚠️ Unknown device ${deviceId} requested by client ${socket.id}`);
-      socket.emit('subscription-error', { deviceId, error: 'Device not found' });
-      return;
+    try {
+      console.log(`📡 Client ${socket.id} subscribing to device: ${deviceId}`);
+      
+      // Check if device exists in our map
+      if (!deviceMap[deviceId]) {
+        console.warn(`⚠️ Unknown device ${deviceId} requested by client ${socket.id}`);
+        socket.emit('subscription-error', { deviceId, error: 'Device not found' });
+        return;
+      }
+      
+      // Join the device room
+      socket.join(`device:${deviceId}`);
+      
+      // Track this subscription
+      const clientDevices = clientSubscriptions.get(socket.id);
+      clientDevices.add(deviceId);
+      
+      // Subscribe to MQTT topic if not already subscribed
+      subscribeToDevice(deviceId);
+      
+      socket.emit('subscription-confirmed', { deviceId });
+      console.log(`✅ Client ${socket.id} successfully subscribed to device: ${deviceId}`);
+    } catch (error) {
+      console.error('❌ Error in subscribe-device:', error.message);
+      socket.emit('subscription-error', { deviceId, error: 'Internal server error' });
     }
-    
-    // Join the device room
-    socket.join(`device:${deviceId}`);
-    
-    // Track this subscription
-    const clientDevices = clientSubscriptions.get(socket.id);
-    clientDevices.add(deviceId);
-    
-    // Subscribe to MQTT topic if not already subscribed
-    subscribeToDevice(deviceId);
-    
-    socket.emit('subscription-confirmed', { deviceId });
-    console.log(`✅ Client ${socket.id} successfully subscribed to device: ${deviceId}`);
   });
   
   // Handle device unsubscription
   socket.on('unsubscribe-device', (deviceId) => {
-    console.log(`📡 Client ${socket.id} unsubscribing from device: ${deviceId}`);
-    
-    // Leave the device room
-    socket.leave(`device:${deviceId}`);
-    
-    // Remove from tracking
-    const clientDevices = clientSubscriptions.get(socket.id);
-    if (clientDevices) {
-      clientDevices.delete(deviceId);
-    }
-    
-    // Check if any other clients are still subscribed to this device
-    let otherClientsSubscribed = false;
-    for (const [clientId, devices] of clientSubscriptions.entries()) {
-      if (clientId !== socket.id && devices.has(deviceId)) {
-        otherClientsSubscribed = true;
-        break;
+    try {
+      console.log(`📡 Client ${socket.id} unsubscribing from device: ${deviceId}`);
+      
+      // Leave the device room
+      socket.leave(`device:${deviceId}`);
+      
+      // Remove from tracking
+      const clientDevices = clientSubscriptions.get(socket.id);
+      if (clientDevices) {
+        clientDevices.delete(deviceId);
       }
-    }
-    
-    // If no other clients are subscribed, unsubscribe from MQTT topic
-    if (!otherClientsSubscribed) {
-      unsubscribeFromDevice(deviceId);
-      console.log(`📡 No other clients subscribed to ${deviceId}, unsubscribing from MQTT topic`);
+      
+      // Check if any other clients are still subscribed to this device
+      let otherClientsSubscribed = false;
+      for (const [clientId, devices] of clientSubscriptions.entries()) {
+        if (clientId !== socket.id && devices.has(deviceId)) {
+          otherClientsSubscribed = true;
+          break;
+        }
+      }
+      
+      // If no other clients are subscribed, unsubscribe from MQTT topic
+      if (!otherClientsSubscribed) {
+        unsubscribeFromDevice(deviceId);
+        console.log(`📡 No other clients subscribed to ${deviceId}, unsubscribing from MQTT topic`);
+      }
+    } catch (error) {
+      console.error('❌ Error in unsubscribe-device:', error.message);
     }
   });
   
   socket.on('disconnect', () => {
     console.log('🔌 WebSocket client disconnected:', socket.id);
     
-    // Get all devices this client was subscribed to
-    const clientDevices = clientSubscriptions.get(socket.id);
-    if (clientDevices) {
-      console.log(`📡 Client ${socket.id} was subscribed to devices:`, Array.from(clientDevices));
-      
-      // Check each device to see if we should unsubscribe from MQTT
-      clientDevices.forEach(deviceId => {
-        let otherClientsSubscribed = false;
-        for (const [clientId, devices] of clientSubscriptions.entries()) {
-          if (clientId !== socket.id && devices.has(deviceId)) {
-            otherClientsSubscribed = true;
-            break;
-          }
-        }
+    try {
+      // Get all devices this client was subscribed to
+      const clientDevices = clientSubscriptions.get(socket.id);
+      if (clientDevices) {
+        console.log(`📡 Client ${socket.id} was subscribed to devices:`, Array.from(clientDevices));
         
-        // If no other clients are subscribed, unsubscribe from MQTT topic
-        if (!otherClientsSubscribed) {
-          unsubscribeFromDevice(deviceId);
-          console.log(`📡 No other clients subscribed to ${deviceId}, unsubscribing from MQTT topic`);
-        }
-      });
+        // Check each device to see if we should unsubscribe from MQTT
+        clientDevices.forEach(deviceId => {
+          let otherClientsSubscribed = false;
+          for (const [clientId, devices] of clientSubscriptions.entries()) {
+            if (clientId !== socket.id && devices.has(deviceId)) {
+              otherClientsSubscribed = true;
+              break;
+            }
+          }
+          
+          // If no other clients are subscribed, unsubscribe from MQTT topic
+          if (!otherClientsSubscribed) {
+            unsubscribeFromDevice(deviceId);
+            console.log(`📡 No other clients subscribed to ${deviceId}, unsubscribing from MQTT topic`);
+          }
+        });
+      }
+      
+      // Clean up client subscriptions
+      clientSubscriptions.delete(socket.id);
+      console.log(`🧹 Cleaned up subscriptions for client ${socket.id}`);
+    } catch (error) {
+      console.error('❌ Error in socket disconnect cleanup:', error.message);
     }
-    
-    // Clean up client subscriptions
-    clientSubscriptions.delete(socket.id);
-    console.log(`🧹 Cleaned up subscriptions for client ${socket.id}`);
   });
 });
 
@@ -188,29 +204,51 @@ let mqttClient = null;
 let deviceMap = {};
 let activeSubscriptions = new Set(); // Track active MQTT subscriptions
 let clientSubscriptions = new Map(); // Track which clients are subscribed to which devices
+let mqttReconnectAttempts = 0;
+const MAX_MQTT_RECONNECT_ATTEMPTS = 10;
 
 // MQTT connection function
 function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
   console.log('🚀 Connecting to MQTT broker:', brokerUrl);
+  
+  // Clean up existing client if it exists
+  if (mqttClient) {
+    mqttClient.removeAllListeners();
+    mqttClient.end(true);
+  }
   
   mqttClient = mqtt.connect(brokerUrl, {
     clientId: `iot_dashboard_main_${Date.now()}`,
     clean: true,
     connectTimeout: 30000,
     reconnectPeriod: 5000,
+    keepalive: 60,
+    reschedulePings: true
   });
 
   mqttClient.on('connect', () => {
     console.log('✅ Connected to MQTT broker');
     console.log('📡 MQTT client ready for dynamic subscriptions');
+    mqttReconnectAttempts = 0; // Reset reconnect attempts on successful connection
   });
 
   mqttClient.on('error', err => {
     console.error('❌ MQTT connection error:', err.message);
+    mqttReconnectAttempts++;
+    
+    if (mqttReconnectAttempts >= MAX_MQTT_RECONNECT_ATTEMPTS) {
+      console.error('❌ Max MQTT reconnection attempts reached, stopping reconnection');
+      return;
+    }
   });
 
   mqttClient.on('reconnect', () => {
     console.log('🔄 Reconnecting to MQTT broker...');
+    mqttReconnectAttempts++;
+  });
+
+  mqttClient.on('close', () => {
+    console.log('🔌 MQTT connection closed');
   });
 
   mqttClient.on('message', async (topic, messageBuffer) => {
@@ -396,7 +434,6 @@ app.use('/api/users', usersRoutes);
 app.use('/api/data', dataRoutes);
 app.use('/api/device', deviceRoutes);
 
-
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ 
@@ -445,8 +482,6 @@ app.get('/health', (req, res) => {
   const statusCode = health.status === 'healthy' ? 200 : 503;
   res.status(statusCode).json(health);
 });
-
-
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -515,7 +550,7 @@ server.listen(PORT, () => {
 });
 
 // Self-ping mechanism to keep server running when deployed on Render
-const pingInterval = setInterval(() => {
+const pingInterval = setInterval(async () => {
   const baseUrl = process.env.DEPLOYED_URL;
   
   // Check if DEPLOYED_URL is set
@@ -528,23 +563,23 @@ const pingInterval = setInterval(() => {
   
   console.log(`🔄 Self-pinging Main Server at ${url}...`);
   
-  fetch(url, {
-    method: 'GET',
-    headers: {
-      'User-Agent': 'Render-Keep-Alive/1.0'
-    },
-    timeout: 10000
-  })
-    .then(response => {
-      if (response.ok) {
-        console.log('✅ Self-ping successful - Main Server kept awake');
-      } else {
-        console.log('⚠️ Self-ping failed - Response not OK:', response.status);
-      }
-    })
-    .catch(error => {
-      console.log('❌ Self-ping failed:', error.message);
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Render-Keep-Alive/1.0'
+      },
+      timeout: 10000
     });
+    
+    if (response.ok) {
+      console.log('✅ Self-ping successful - Main Server kept awake');
+    } else {
+      console.log('⚠️ Self-ping failed - Response not OK:', response.status);
+    }
+  } catch (error) {
+    console.log('❌ Self-ping failed:', error.message);
+  }
 }, 5 * 60 * 1000); // Ping every 5 minutes
 
 // Alternative keep-alive mechanism using internal ping
@@ -560,44 +595,86 @@ const internalPingInterval = setInterval(() => {
   console.log(`   - Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
   
   // Try to reconnect MQTT if disconnected
-  if (mqttClient && !mqttClient.connected) {
+  if (mqttClient && !mqttClient.connected && mqttReconnectAttempts < MAX_MQTT_RECONNECT_ATTEMPTS) {
     console.log('🔄 Attempting to reconnect MQTT...');
     connectMQTT();
   }
+  
+  // Clean up stale client subscriptions (clients that disconnected without proper cleanup)
+  const now = Date.now();
+  for (const [clientId, devices] of clientSubscriptions.entries()) {
+    const socket = io.sockets.sockets.get(clientId);
+    if (!socket || !socket.connected) {
+      console.log(`🧹 Cleaning up stale client subscription: ${clientId}`);
+      clientSubscriptions.delete(clientId);
+    }
+  }
 }, 10 * 60 * 1000); // Internal ping every 10 minutes
 
-// Cleanup intervals on process exit
-process.on('SIGINT', () => {
-  console.log('🛑 Shutting down server...');
+// Memory cleanup interval
+const memoryCleanupInterval = setInterval(() => {
+  // Force garbage collection if available
+  if (global.gc) {
+    global.gc();
+    console.log('🧹 Memory cleanup performed');
+  }
+  
+  // Log memory usage
+  const memUsage = process.memoryUsage();
+  console.log(`📊 Memory Usage:`, {
+    heapUsed: `${Math.round(memUsage.heapUsed / 1024 / 1024)}MB`,
+    heapTotal: `${Math.round(memUsage.heapTotal / 1024 / 1024)}MB`,
+    external: `${Math.round(memUsage.external / 1024 / 1024)}MB`,
+    rss: `${Math.round(memUsage.rss / 1024 / 1024)}MB`
+  });
+}, 30 * 60 * 1000); // Memory cleanup every 30 minutes
+
+// Graceful shutdown function
+const gracefulShutdown = (signal) => {
+  console.log(`🛑 Received ${signal}, shutting down gracefully...`);
+  
+  // Clear all intervals
   clearInterval(pingInterval);
   clearInterval(internalPingInterval);
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  console.log('🛑 Server terminated...');
-  clearInterval(pingInterval);
-  clearInterval(internalPingInterval);
-  process.exit(0);
-});
-
-// Cleanup on process exit
-process.on('SIGINT', () => {
-  console.log('🛑 Shutting down Main Server...');
-  clearInterval(pingInterval);
+  clearInterval(memoryCleanupInterval);
+  
+  // Close all socket connections
+  io.close(() => {
+    console.log('🔌 Socket.IO server closed');
+  });
+  
+  // Disconnect MQTT client
   if (mqttClient) {
-    mqttClient.end();
-    console.log('🔌 MQTT client disconnected');
+    mqttClient.end(true, () => {
+      console.log('🔌 MQTT client disconnected');
+    });
   }
-  process.exit(0);
+  
+  // Close database connection
+  mongoose.connection.close(() => {
+    console.log('📡 Database connection closed');
+    process.exit(0);
+  });
+  
+  // Force exit after 10 seconds if graceful shutdown fails
+  setTimeout(() => {
+    console.error('❌ Forced shutdown after timeout');
+    process.exit(1);
+  }, 10000);
+};
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+  gracefulShutdown('uncaughtException');
 });
 
-process.on('SIGTERM', () => {
-  console.log('🛑 Shutting down Main Server...');
-  clearInterval(pingInterval);
-  if (mqttClient) {
-    mqttClient.end();
-    console.log('🔌 MQTT client disconnected');
-  }
-  process.exit(0);
-}); 
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  gracefulShutdown('unhandledRejection');
+});
+
+// Handle shutdown signals
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM')); 

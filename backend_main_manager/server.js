@@ -7,6 +7,7 @@ import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import mqtt from 'mqtt';
+import fetch from 'node-fetch';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -422,6 +423,29 @@ app.get('/ping', (req, res) => {
   });
 });
 
+// Health check endpoint for monitoring services
+app.get('/health', (req, res) => {
+  const health = {
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    memory: process.memoryUsage(),
+    mqttConnected: mqttClient ? mqttClient.connected : false,
+    deviceCount: Object.keys(deviceMap).length,
+    activeSubscriptions: activeSubscriptions.size,
+    connectedClients: clientSubscriptions.size
+  };
+  
+  // Return 503 if MQTT is not connected
+  if (!mqttClient || !mqttClient.connected) {
+    health.status = 'degraded';
+    health.mqttError = 'MQTT connection lost';
+  }
+  
+  const statusCode = health.status === 'healthy' ? 200 : 503;
+  res.status(statusCode).json(health);
+});
+
 
 
 // Root endpoint
@@ -481,6 +505,7 @@ server.listen(PORT, () => {
   console.log(`🔌 WebSocket server ready for connections`);
   console.log(`📊 Available endpoints:`);
   console.log(`   GET  /ping - Health check endpoint`);
+  console.log(`   GET  /health - Detailed health check`);
   console.log(`   GET  /api/health - Detailed health check`);
   console.log(`   GET  /api/auth - Authentication routes`);
   console.log(`   GET  /api/sites - Site management routes`);
@@ -491,7 +516,14 @@ server.listen(PORT, () => {
 
 // Self-ping mechanism to keep server running when deployed on Render
 const pingInterval = setInterval(() => {
-  const baseUrl = process.env.DEPLOYED_URL ;
+  const baseUrl = process.env.DEPLOYED_URL;
+  
+  // Check if DEPLOYED_URL is set
+  if (!baseUrl) {
+    console.log('⚠️ DEPLOYED_URL not set, skipping self-ping');
+    return;
+  }
+  
   const url = `${baseUrl}/ping`;
   
   console.log(`🔄 Self-pinging Main Server at ${url}...`);
@@ -514,6 +546,40 @@ const pingInterval = setInterval(() => {
       console.log('❌ Self-ping failed:', error.message);
     });
 }, 5 * 60 * 1000); // Ping every 5 minutes
+
+// Alternative keep-alive mechanism using internal ping
+const internalPingInterval = setInterval(() => {
+  console.log('🔄 Internal keep-alive ping - Server is running');
+  
+  // Log server status
+  console.log(`📊 Server Status:`);
+  console.log(`   - MQTT Connected: ${mqttClient ? mqttClient.connected : false}`);
+  console.log(`   - Device Count: ${Object.keys(deviceMap).length}`);
+  console.log(`   - Active Subscriptions: ${activeSubscriptions.size}`);
+  console.log(`   - Connected Clients: ${clientSubscriptions.size}`);
+  console.log(`   - Memory Usage: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
+  
+  // Try to reconnect MQTT if disconnected
+  if (mqttClient && !mqttClient.connected) {
+    console.log('🔄 Attempting to reconnect MQTT...');
+    connectMQTT();
+  }
+}, 10 * 60 * 1000); // Internal ping every 10 minutes
+
+// Cleanup intervals on process exit
+process.on('SIGINT', () => {
+  console.log('🛑 Shutting down server...');
+  clearInterval(pingInterval);
+  clearInterval(internalPingInterval);
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  console.log('🛑 Server terminated...');
+  clearInterval(pingInterval);
+  clearInterval(internalPingInterval);
+  process.exit(0);
+});
 
 // Cleanup on process exit
 process.on('SIGINT', () => {

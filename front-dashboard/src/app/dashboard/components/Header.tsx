@@ -55,7 +55,7 @@ export default function Header({ user }: HeaderProps) {
       <div className="flex items-center justify-between">
         {/* Left side */}
         <div className="flex-1 min-w-0 ml-12 sm:ml-0">
-          <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 truncate">IoT Dashboard</h1>
+          <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 truncate">Dashboard</h1>
           <p className="text-xs sm:text-sm text-gray-600 truncate">Welcome back, {user.name || user.email}</p>
         </div>
 

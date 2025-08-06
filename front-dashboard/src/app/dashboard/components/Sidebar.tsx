@@ -75,7 +75,7 @@ export default function Sidebar({ sites }: { sites?: any[] }) {
           {!isCollapsed && (
             <div className="flex items-center">
               <div className="flex-shrink-0">
-                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">IoT Dashboard</h1>
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate"></h1>
               </div>
             </div>
           )}

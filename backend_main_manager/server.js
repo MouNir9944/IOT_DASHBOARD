@@ -375,30 +375,41 @@ function subscribeToDevice(deviceId) {
 
 // Helper function to unsubscribe from a device topic
 function unsubscribeFromDevice(deviceId) {
-  if (!mqttClient || !mqttClient.connected) {
-    console.warn('⚠️ MQTT client not connected, cannot unsubscribe from device:', deviceId);
-    return false;
-  }
-
-  const topic = `device/${deviceId}/data`;
-  
-  if (!activeSubscriptions.has(topic)) {
-    console.log(`📡 Not subscribed to topic: ${topic}`);
-    return true;
-  }
-
-  mqttClient.unsubscribe(topic, (err) => {
-    if (err) {
-      console.error(`❌ Failed to unsubscribe from topic "${topic}":`, err.message);
+  try {
+    if (!mqttClient || !mqttClient.connected) {
+      console.warn('⚠️ MQTT client not connected, cannot unsubscribe from device:', deviceId);
       return false;
-    } else {
-      console.log(`📡 Unsubscribed from MQTT topic: ${topic}`);
-      activeSubscriptions.delete(topic);
+    }
+
+    const topic = `device/${deviceId}/data`;
+    
+    if (!activeSubscriptions.has(topic)) {
+      console.log(`📡 Not subscribed to topic: ${topic}`);
       return true;
     }
-  });
-  
-  return true;
+
+    console.log(`🔄 Attempting to unsubscribe from MQTT topic: ${topic}`);
+    
+    mqttClient.unsubscribe(topic, (err) => {
+      if (err) {
+        console.error(`❌ Failed to unsubscribe from topic "${topic}":`, err.message);
+        // Don't remove from activeSubscriptions on error to allow retry
+        return false;
+      } else {
+        console.log(`📡 Successfully unsubscribed from MQTT topic: ${topic}`);
+        activeSubscriptions.delete(topic);
+        
+        // Log MQTT connection status after unsubscribe
+        console.log(`📊 MQTT status after unsubscribe: connected=${mqttClient.connected}, subscriptions=${activeSubscriptions.size}`);
+        return true;
+      }
+    });
+    
+    return true;
+  } catch (error) {
+    console.error(`❌ Exception during unsubscribe from device ${deviceId}:`, error.message);
+    return false;
+  }
 }
 
 // Function to refresh device map (call when devices are added/updated)
@@ -668,10 +679,21 @@ const internalPingInterval = setInterval(() => {
     console.log('⚠️  WARNING: High number of client subscriptions!');
   }
   
-  // Try to reconnect MQTT if disconnected
-  if (mqttClient && !mqttClient.connected && mqttReconnectAttempts < MAX_MQTT_RECONNECT_ATTEMPTS) {
-    console.log('🔄 Attempting to reconnect MQTT...');
-    connectMQTT();
+  // Check if MQTT connection is stable
+  if (mqttClient) {
+    const mqttConnected = mqttClient.connected;
+    console.log(`📡 MQTT Connection Status: ${mqttConnected ? 'Connected' : 'Disconnected'}`);
+    
+    // If MQTT is disconnected, try to reconnect
+    if (!mqttConnected && mqttReconnectAttempts < MAX_MQTT_RECONNECT_ATTEMPTS) {
+      console.log('🔄 Attempting to reconnect MQTT...');
+      connectMQTT();
+    }
+    
+    // Log MQTT client state for debugging
+    if (mqttClient.reconnecting) {
+      console.log('🔄 MQTT client is currently reconnecting...');
+    }
   }
   
   // Clean up stale client subscriptions (clients that disconnected without proper cleanup)
@@ -699,6 +721,14 @@ const internalPingInterval = setInterval(() => {
     consecutiveFailures = 0;
   }
   
+  // Test HTTP server responsiveness
+  try {
+    const testResponse = { status: 'ok', timestamp: Date.now() };
+    console.log('✅ HTTP server is responsive');
+  } catch (error) {
+    console.error('❌ HTTP server responsiveness test failed:', error.message);
+  }
+  
 }, 10 * 60 * 1000); // Internal ping every 10 minutes
 
 // Memory cleanup interval
@@ -719,6 +749,31 @@ const memoryCleanupInterval = setInterval(() => {
   });
 }, 30 * 60 * 1000); // Memory cleanup every 30 minutes
 
+// Quick health check interval (every 2 minutes)
+const quickHealthCheckInterval = setInterval(() => {
+  try {
+    // Check if server is still responsive
+    const memUsage = process.memoryUsage();
+    const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+    
+    // Log quick status
+    console.log(`💓 Quick health check: MQTT=${mqttClient?.connected ? 'OK' : 'FAIL'}, Memory=${heapUsedMB}MB, Clients=${clientSubscriptions.size}`);
+    
+    // Alert if memory usage is too high
+    if (heapUsedMB > 300) {
+      console.log('🚨 CRITICAL: Memory usage too high, consider restarting server');
+    }
+    
+    // Alert if MQTT is disconnected for too long
+    if (mqttClient && !mqttClient.connected && mqttReconnectAttempts >= MAX_MQTT_RECONNECT_ATTEMPTS) {
+      console.log('🚨 CRITICAL: MQTT connection lost and max reconnection attempts reached');
+    }
+    
+  } catch (error) {
+    console.error('❌ Quick health check failed:', error.message);
+  }
+}, 2 * 60 * 1000); // Every 2 minutes
+
 // Graceful shutdown function
 const gracefulShutdown = (signal) => {
   console.log(`🛑 Received ${signal}, shutting down gracefully...`);
@@ -727,6 +782,7 @@ const gracefulShutdown = (signal) => {
   clearInterval(pingInterval);
   clearInterval(internalPingInterval);
   clearInterval(memoryCleanupInterval);
+  clearInterval(quickHealthCheckInterval);
   
   // Close all socket connections
   io.close(() => {

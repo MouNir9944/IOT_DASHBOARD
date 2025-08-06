@@ -91,6 +91,11 @@ npm run monitor
 npm run deploy-check
 ```
 
+### Diagnose Server Issues
+```bash
+npm run diagnose
+```
+
 ### Check Memory Usage
 ```bash
 curl http://localhost:5000/health | jq '.memory'

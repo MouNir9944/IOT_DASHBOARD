@@ -10,6 +10,7 @@
     "dev": "nodemon server.js",
     "monitor": "node monitor.js",
     "deploy-check": "node deployment-health-check.js",
+    "diagnose": "node diagnose-server.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [

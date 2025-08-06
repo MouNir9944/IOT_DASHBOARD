@@ -35,7 +35,7 @@ const router = express.Router();
         const format = formatMap[granularity.toLowerCase()] || '%Y-%m-%d';
         const dbName = await getSiteDbName(siteId);
     
-        const siteConnection = mongoose.createConnection("mongodb://localhost:27017", {
+        const siteConnection = mongoose.createConnection(process.env.MONGO_URI, {
             dbName,
             serverSelectionTimeoutMS: 30000
         });
@@ -114,7 +114,7 @@ const router = express.Router();
         const { siteId } = req.params;
         const dbName = await getSiteDbName(siteId);
     
-        const siteConnection = mongoose.createConnection("mongodb://localhost:27017", {
+        const siteConnection = mongoose.createConnection(process.env.MONGO_URI, { 
             dbName,
             serverSelectionTimeoutMS: 30000
     
@@ -198,7 +198,7 @@ const router = express.Router();
             const dbName = await getSiteDbName(siteId);
             console.log('🔍 [Device Stats] Using database:', dbName);
         
-            const siteConnection = mongoose.createConnection("mongodb://localhost:27017", {
+            const siteConnection = mongoose.createConnection(process.env.MONGO_URI, {
                 dbName,
                 serverSelectionTimeoutMS: 30000
             });
@@ -385,7 +385,7 @@ const router = express.Router();
             const dbName = await getSiteDbName(siteId);
             console.log('🌊 [Device Metrics] Using database:', dbName);
         
-            const siteConnection = mongoose.createConnection("mongodb://localhost:27017", {
+            const siteConnection = mongoose.createConnection(process.env.MONGO_URI, {
                 dbName,
                 serverSelectionTimeoutMS: 30000
             });
@@ -539,7 +539,7 @@ const router = express.Router();
             const dbName = await getSiteDbName(siteId);
             console.log('📊 [Device Raw Data] Using database:', dbName, 'collection:', collectionName);
         
-            const siteConnection = mongoose.createConnection("mongodb://localhost:27017", {
+            const siteConnection = mongoose.createConnection(process.env.MONGO_URI, {
                 dbName,
                 serverSelectionTimeoutMS: 30000
             });
@@ -709,7 +709,7 @@ const router = express.Router();
             const dbName = await getSiteDbName(siteId);
             console.log('📈 [Device Historical Data] Using database:', dbName, 'collection:', collectionName);
         
-            const siteConnection = mongoose.createConnection("mongodb://localhost:27017", {
+            const siteConnection = mongoose.createConnection(process.env.MONGO_URI, {
                 dbName,
                 serverSelectionTimeoutMS: 30000
             });
@@ -893,7 +893,7 @@ const router = express.Router();
             if (!site) continue;
     
             const dbName = site.name.replace(/\s+/g, '_'); // sanitize name
-            const siteConnection = mongoose.createConnection("mongodb://localhost:27017", {
+            const siteConnection = mongoose.createConnection(process.env.MONGO_URI, {
             dbName,
     
             serverSelectionTimeoutMS: 30000,
@@ -1024,7 +1024,7 @@ const router = express.Router();
             if (!site) continue;
     
             const dbName = site.name.replace(/\s+/g, '_');
-            const siteConnection = mongoose.createConnection("mongodb://localhost:27017", {
+            const siteConnection = mongoose.createConnection(process.env.MONGO_URI, {
             dbName,
     
             serverSelectionTimeoutMS: 30000,
@@ -1136,7 +1136,7 @@ const router = express.Router();
             if (!site) return;
     
             const dbName = site.name.replace(/\s+/g, '_');
-            const siteConnection = mongoose.createConnection("mongodb://localhost:27017", {
+            const siteConnection = mongoose.createConnection(process.env.MONGO_URI, {     
             dbName,
             serverSelectionTimeoutMS: 30000,
             });
@@ -1286,7 +1286,7 @@ const router = express.Router();
         const { from, to, granularity = 'day', deviceIds } = req.body;
         const field = 'value'; // All device types now use 'value' field
         const dbName = await getSiteDbName(siteId);
-        const siteConnection = mongoose.createConnection("mongodb://localhost:27017", { dbName });
+        const siteConnection = mongoose.createConnection(process.env.MONGO_URI, { dbName });
     
         const match = {
         [field]: { $exists: true },

@@ -13,7 +13,7 @@ app.use(cors());
 app.use(express.json());
 
 
-const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017';
+const MONGO_URI = process.env.MONGO_URI ;
 
 const mainDB = mongoose.createConnection(MONGO_URI, {
   dbName: 'iot_dashboard',
@@ -234,7 +234,7 @@ mainDB.once('connected', () => {
 
 // Self-ping mechanism to keep server running when deployed on Render
 const pingInterval = setInterval(() => {
-  const baseUrl = process.env.DEPLOYED_URL || `http://localhost:${PORT}`;
+  const baseUrl = process.env.DEPLOYED_URL ;
   const url = `${baseUrl}/ping`;
   
   console.log(`🔄 Self-pinging MQTT Data Manager server at ${url}...`);

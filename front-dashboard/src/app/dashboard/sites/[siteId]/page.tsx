@@ -193,7 +193,7 @@ export default function SiteDetailPage() {
     const periodLabels = generatePeriodLabels(from, to, granularity);
     // Helper to fetch stats
     const fetchStats = async (type: string, setData: any, setLabels: any) => {
-      const url = `${API_URL}/data/site/${siteId}/${type}/stats`;
+      const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/${type}/stats`;
       const body = JSON.stringify({
         from,
         to,
@@ -222,7 +222,7 @@ export default function SiteDetailPage() {
     fetchStats('gas', setGasData, setGasLabels);
     // Fetch index values
     const fetchIndex = async (type: string, setter: any) => {
-      const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/site/${siteId}/${type}/index`;
+      const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/${type}/index`;
       const res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

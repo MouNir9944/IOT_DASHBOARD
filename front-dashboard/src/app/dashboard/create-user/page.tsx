@@ -4,7 +4,7 @@ import DashboardLayout from '../components/DashboardLayout';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites'; // TODO: change to /api/sites/user/{userId} 
 
 export default function CreateUserPage() {
   const { data: session, status } = useSession();

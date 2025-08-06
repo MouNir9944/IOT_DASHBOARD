@@ -46,7 +46,7 @@ export default function SiteAnalyticsPage() {
   const [compareData, setCompareData] = useState<any[]>([]);
   const [deviceOptions, setDeviceOptions] = useState<any[]>([]);          
   const [selectedDevices, setSelectedDevices] = useState<string[]>([]);
-  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
+  const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites'; // TODO: change to /api/sites/data/site/{siteId}/devices?type={type}
   // Fetch site name
   useEffect(() => {
     async function fetchSite() {
@@ -66,7 +66,7 @@ export default function SiteAnalyticsPage() {
   useEffect(() => {
     async function fetchDevices() {
       try {
-        const res = await fetch(`${API_URL}/data/site/${siteId}/devices?type=${metric}`);
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/devices?type=${metric}`);
         if (!res.ok) throw new Error('Failed to fetch devices');
         const devices = await res.json();
         setDeviceOptions(devices.map((s: any) => ({
@@ -95,7 +95,7 @@ export default function SiteAnalyticsPage() {
           to = customTo.toISOString();
         }
         const granularity = period === 'year' ? 'year' : period === 'month' ? 'month' : 'day';
-        const res = await fetch(`${API_URL}/data/site/${siteId}/${metric}/compare`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/${metric}/compare`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ from, to, granularity, deviceIds: selectedDevices })

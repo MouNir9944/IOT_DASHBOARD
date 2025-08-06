@@ -3,8 +3,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import 'leaflet/dist/leaflet.css';
 import './Map.css';
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
-import L from 'leaflet';
 
 type Site = {
   _id: string;
@@ -17,8 +15,33 @@ type Site = {
   // ...other fields
 };
 
+// Dynamic imports for client-side only
+let MapContainer: any, TileLayer: any, Marker: any, Popup: any, useMap: any, L: any;
+
+const loadLeafletComponents = async () => {
+  if (typeof window === 'undefined') return;
+  
+  const reactLeaflet = await import('react-leaflet');
+  const leaflet = await import('leaflet');
+  
+  MapContainer = reactLeaflet.MapContainer;
+  TileLayer = reactLeaflet.TileLayer;
+  Marker = reactLeaflet.Marker;
+  Popup = reactLeaflet.Popup;
+  useMap = reactLeaflet.useMap;
+  L = leaflet.default;
+  
+  // Fix for default marker icons
+  delete (L.Icon.Default.prototype as any)._getIconUrl;
+  L.Icon.Default.mergeOptions({
+    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  });
+};
+
 // Type-to-icon mapping using SVG/CDN URLs (no local imports)
-const iconMap: Record<string, L.Icon> = {
+const getIconMap = (L: any): Record<string, any> => ({
   manufacturing: L.icon({
     iconUrl: 'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/icons/gear-fill.svg',
     iconSize: [32, 32],
@@ -49,10 +72,10 @@ const iconMap: Record<string, L.Icon> = {
     iconAnchor: [16, 32],
     popupAnchor: [0, -32],
   }),
-};
+});
 
 // Fallback default icon (Leaflet blue marker from CDN)
-const defaultIcon = L.icon({
+const getDefaultIcon = (L: any) => L.icon({
   iconUrl: 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-icon.png',
   iconSize: [25, 41],
   iconAnchor: [12, 41],
@@ -64,6 +87,7 @@ const defaultIcon = L.icon({
 function CenterMapButton({ sites }: { sites: Site[] }) {
   const map = useMap();
   const handleCenter = () => {
+    if (!L) return;
     const validSites = sites
       .map(site => [site.latitude ?? site.location?.latitude, site.longitude ?? site.location?.longitude] as [number | undefined, number | undefined])
       .filter(([lat, lng]) => typeof lat === 'number' && typeof lng === 'number') as [number, number][];
@@ -95,6 +119,7 @@ function CenterMapButton({ sites }: { sites: Site[] }) {
 
 export default function Map({ sites }: { sites: Site[] }) {
   const [isClient, setIsClient] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
   const mapRef = useRef<any>(null);
   const center: [number, number] = sites.length > 0
     ? [
@@ -108,11 +133,14 @@ export default function Map({ sites }: { sites: Site[] }) {
 
   useEffect(() => {
     setIsClient(true);
+    loadLeafletComponents().then(() => {
+      setIsLoaded(true);
+    });
   }, []);
 
   // Auto-center map to fit all sites only on first load
   useEffect(() => {
-    if (!isClient || !mapRef.current || hasAutoCenteredRef.current) return;
+    if (!isClient || !isLoaded || !mapRef.current || hasAutoCenteredRef.current || !L) return;
     const map = mapRef.current;
     const validSites = sites
       .map(site => [site.latitude ?? site.location?.latitude, site.longitude ?? site.location?.longitude] as [number | undefined, number | undefined])
@@ -124,7 +152,7 @@ export default function Map({ sites }: { sites: Site[] }) {
       map.setView([0, 0], 7);
     }
     hasAutoCenteredRef.current = true;
-  }, [isClient, sites]);
+  }, [isClient, isLoaded, sites]);
 
   const handleCenterMap = () => {
     if (mapRef.current) {
@@ -132,8 +160,8 @@ export default function Map({ sites }: { sites: Site[] }) {
     }
   };
 
-  // Only render map on client side
-  if (!isClient) {
+  // Show loading state while components are loading
+  if (!isClient || !isLoaded || !MapContainer) {
     return (
       <div className="relative w-full h-full">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 sm:mb-4 p-3 sm:p-4 bg-white rounded-lg shadow">
@@ -162,54 +190,44 @@ export default function Map({ sites }: { sites: Site[] }) {
     );
   }
 
-  // Import Leaflet components only on client side
-  const L = require('leaflet');
-
-  // Fix for default marker icons
-  delete (L.Icon.Default.prototype as any)._getIconUrl;
-  L.Icon.Default.mergeOptions({
-    iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-    iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-    shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  });
+  const iconMap = getIconMap(L);
+  const defaultIcon = getDefaultIcon(L);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-      {isClient && (
-        <div className="relative w-full h-full">
-          <MapContainer center={center} zoom={7} minZoom={2} maxZoom={10} style={{ height: '100%', width: '100%' }} ref={mapRef}>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            <CenterMapButton sites={sites} />
-            {/* Render a marker for each site */}
-            {sites && sites.length > 0 ? (
-              sites.map(site => {
-                const lat = site.latitude ?? site.location?.latitude;
-                const lng = site.longitude ?? site.location?.longitude;
-                if (lat == null || lng == null) return null;
-                const icon = iconMap[site.type] || defaultIcon;
-                return (
-                  <Marker key={site._id} position={[lat, lng]} icon={icon}>
-                    <Popup>
-                      <div className="font-semibold text-base mb-1">{site.name}</div>
-                      <div className="text-sm mb-1">Type: <span className="font-medium">{site.type}</span></div>
-                      {site.address && (
-                        <div className="text-sm mb-1">Address: <span className="font-medium">{site.address}</span></div>
-                      )}
-                      <div className="text-xs text-gray-500">
-                        Lat: {lat?.toFixed(5)}, Lng: {lng?.toFixed(5)}
-                      </div>
-                    </Popup>
-                  </Marker>
-                );
-              })
-            ) : (
-              <Marker position={center} icon={defaultIcon}>
-                <Popup>No sites to display</Popup>
-              </Marker>
-            )}
-          </MapContainer>
-        </div>
-      )}
+      <div className="relative w-full h-full">
+        <MapContainer center={center} zoom={7} minZoom={2} maxZoom={10} style={{ height: '100%', width: '100%' }} ref={mapRef}>
+          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <CenterMapButton sites={sites} />
+          {/* Render a marker for each site */}
+          {sites && sites.length > 0 ? (
+            sites.map(site => {
+              const lat = site.latitude ?? site.location?.latitude;
+              const lng = site.longitude ?? site.location?.longitude;
+              if (lat == null || lng == null) return null;
+              const icon = iconMap[site.type] || defaultIcon;
+              return (
+                <Marker key={site._id} position={[lat, lng]} icon={icon}>
+                  <Popup>
+                    <div className="font-semibold text-base mb-1">{site.name}</div>
+                    <div className="text-sm mb-1">Type: <span className="font-medium">{site.type}</span></div>
+                    {site.address && (
+                      <div className="text-sm mb-1">Address: <span className="font-medium">{site.address}</span></div>
+                    )}
+                    <div className="text-xs text-gray-500">
+                      Lat: {lat?.toFixed(5)}, Lng: {lng?.toFixed(5)}
+                    </div>
+                  </Popup>
+                </Marker>
+              );
+            })
+          ) : (
+            <Marker position={center} icon={defaultIcon}>
+              <Popup>No sites to display</Popup>
+            </Marker>
+          )}
+        </MapContainer>
+      </div>
     </div>
   );
 } 

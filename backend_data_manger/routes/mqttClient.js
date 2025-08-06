@@ -12,7 +12,7 @@ let topics = [];
 let deviceMap = {}; // Maps deviceId -> { siteDbName, siteName, siteId, type, deviceName }
 let siteConnections = {}; // Cache DB connections
 
-function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com') {
+function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
   // Ensure URL has protocol
   if (brokerUrl && !brokerUrl.startsWith('mqtt://') && !brokerUrl.startsWith('mqtts://')) {
     brokerUrl = 'mqtt://' + brokerUrl;
@@ -70,7 +70,7 @@ function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://broker.h
 
       // Create or get site DB connection
       if (!siteConnections[siteDbName]) {
-        siteConnections[siteDbName] = mongoose.createConnection(process.env.MONGO_URI || 'mongodb://localhost:27017', {
+        siteConnections[siteDbName] = mongoose.createConnection(process.env.MONGO_URI, {
           dbName: siteDbName,
           serverSelectionTimeoutMS: 30000,
         });

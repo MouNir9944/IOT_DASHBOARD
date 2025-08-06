@@ -35,21 +35,92 @@ const io = new Server(server, {
 io.on('connection', (socket) => {
   console.log('🔌 WebSocket client connected:', socket.id);
   
+  // Initialize client subscriptions tracking
+  clientSubscriptions.set(socket.id, new Set());
+  
   // Handle device subscription
   socket.on('subscribe-device', (deviceId) => {
     console.log(`📡 Client ${socket.id} subscribing to device: ${deviceId}`);
+    
+    // Check if device exists in our map
+    if (!deviceMap[deviceId]) {
+      console.warn(`⚠️ Unknown device ${deviceId} requested by client ${socket.id}`);
+      socket.emit('subscription-error', { deviceId, error: 'Device not found' });
+      return;
+    }
+    
+    // Join the device room
     socket.join(`device:${deviceId}`);
+    
+    // Track this subscription
+    const clientDevices = clientSubscriptions.get(socket.id);
+    clientDevices.add(deviceId);
+    
+    // Subscribe to MQTT topic if not already subscribed
+    subscribeToDevice(deviceId);
+    
     socket.emit('subscription-confirmed', { deviceId });
+    console.log(`✅ Client ${socket.id} successfully subscribed to device: ${deviceId}`);
   });
   
   // Handle device unsubscription
   socket.on('unsubscribe-device', (deviceId) => {
     console.log(`📡 Client ${socket.id} unsubscribing from device: ${deviceId}`);
+    
+    // Leave the device room
     socket.leave(`device:${deviceId}`);
+    
+    // Remove from tracking
+    const clientDevices = clientSubscriptions.get(socket.id);
+    if (clientDevices) {
+      clientDevices.delete(deviceId);
+    }
+    
+    // Check if any other clients are still subscribed to this device
+    let otherClientsSubscribed = false;
+    for (const [clientId, devices] of clientSubscriptions.entries()) {
+      if (clientId !== socket.id && devices.has(deviceId)) {
+        otherClientsSubscribed = true;
+        break;
+      }
+    }
+    
+    // If no other clients are subscribed, unsubscribe from MQTT topic
+    if (!otherClientsSubscribed) {
+      unsubscribeFromDevice(deviceId);
+      console.log(`📡 No other clients subscribed to ${deviceId}, unsubscribing from MQTT topic`);
+    }
   });
   
   socket.on('disconnect', () => {
     console.log('🔌 WebSocket client disconnected:', socket.id);
+    
+    // Get all devices this client was subscribed to
+    const clientDevices = clientSubscriptions.get(socket.id);
+    if (clientDevices) {
+      console.log(`📡 Client ${socket.id} was subscribed to devices:`, Array.from(clientDevices));
+      
+      // Check each device to see if we should unsubscribe from MQTT
+      clientDevices.forEach(deviceId => {
+        let otherClientsSubscribed = false;
+        for (const [clientId, devices] of clientSubscriptions.entries()) {
+          if (clientId !== socket.id && devices.has(deviceId)) {
+            otherClientsSubscribed = true;
+            break;
+          }
+        }
+        
+        // If no other clients are subscribed, unsubscribe from MQTT topic
+        if (!otherClientsSubscribed) {
+          unsubscribeFromDevice(deviceId);
+          console.log(`📡 No other clients subscribed to ${deviceId}, unsubscribing from MQTT topic`);
+        }
+      });
+    }
+    
+    // Clean up client subscriptions
+    clientSubscriptions.delete(socket.id);
+    console.log(`🧹 Cleaned up subscriptions for client ${socket.id}`);
   });
 });
 
@@ -112,7 +183,8 @@ connectDB().then(connected => {
 // MQTT Client Setup
 let mqttClient = null;
 let deviceMap = {};
-let topics = [];
+let activeSubscriptions = new Set(); // Track active MQTT subscriptions
+let clientSubscriptions = new Map(); // Track which clients are subscribed to which devices
 
 // MQTT connection function
 function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
@@ -127,19 +199,7 @@ function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
 
   mqttClient.on('connect', () => {
     console.log('✅ Connected to MQTT broker');
-    
-    // Subscribe to all device topics
-    if (topics.length > 0) {
-      topics.forEach(topic => {
-        mqttClient.subscribe(topic, err => {
-          if (err) {
-            console.error(`❌ Failed to subscribe to topic "${topic}":`, err.message);
-          } else {
-            console.log(`📡 Subscribed to MQTT topic: ${topic}`);
-          }
-        });
-      });
-    }
+    console.log('📡 MQTT client ready for dynamic subscriptions');
   });
 
   mqttClient.on('error', err => {
@@ -191,8 +251,8 @@ function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
   });
 }
 
-// Function to build device map and subscribe to topics
-async function initializeMQTTSubscriptions() {
+// Function to build device map (no automatic subscriptions)
+async function initializeDeviceMap() {
   try {
     // Import device and site models
     const Device = mongoose.model('Device');
@@ -208,7 +268,6 @@ async function initializeMQTTSubscriptions() {
       siteMap[site._id.toString()] = site;
     });
 
-    const newDeviceTopics = [];
     const newDeviceMap = {};
 
     console.log('🔨 Building device map from database...');
@@ -229,8 +288,6 @@ async function initializeMQTTSubscriptions() {
         deviceName: device.name
       };
       
-      // MQTT topic format: device/{deviceId}/data
-      newDeviceTopics.push(`device/${device.deviceId}/data`);
       console.log(`  📱 Found device: ${device.name} (${device.deviceId}) -> Site: ${site.name}`);
     }
     
@@ -238,38 +295,89 @@ async function initializeMQTTSubscriptions() {
 
     // Update global variables
     deviceMap = newDeviceMap;
-    topics = newDeviceTopics;
 
     // Connect to MQTT broker
     connectMQTT();
 
   } catch (error) {
-    console.error('❌ Failed to initialize MQTT subscriptions:', error.message);
+    console.error('❌ Failed to initialize device map:', error.message);
   }
 }
 
-// Function to refresh MQTT subscriptions (call when devices are added/updated)
-async function refreshMQTTSubscriptions() {
-  console.log('🔄 Refreshing MQTT subscriptions...');
-  
-  // Unsubscribe from old topics
-  if (mqttClient && topics.length > 0) {
-    topics.forEach(topic => {
-      mqttClient.unsubscribe(topic);
-    });
+// Helper function to subscribe to a device topic
+function subscribeToDevice(deviceId) {
+  if (!mqttClient || !mqttClient.connected) {
+    console.warn('⚠️ MQTT client not connected, cannot subscribe to device:', deviceId);
+    return false;
   }
+
+  const topic = `device/${deviceId}/data`;
   
-  // Reinitialize subscriptions
-  await initializeMQTTSubscriptions();
+  if (activeSubscriptions.has(topic)) {
+    console.log(`📡 Already subscribed to topic: ${topic}`);
+    return true;
+  }
+
+  mqttClient.subscribe(topic, (err) => {
+    if (err) {
+      console.error(`❌ Failed to subscribe to topic "${topic}":`, err.message);
+      return false;
+    } else {
+      console.log(`📡 Subscribed to MQTT topic: ${topic}`);
+      activeSubscriptions.add(topic);
+      return true;
+    }
+  });
+  
+  return true;
+}
+
+// Helper function to unsubscribe from a device topic
+function unsubscribeFromDevice(deviceId) {
+  if (!mqttClient || !mqttClient.connected) {
+    console.warn('⚠️ MQTT client not connected, cannot unsubscribe from device:', deviceId);
+    return false;
+  }
+
+  const topic = `device/${deviceId}/data`;
+  
+  if (!activeSubscriptions.has(topic)) {
+    console.log(`📡 Not subscribed to topic: ${topic}`);
+    return true;
+  }
+
+  mqttClient.unsubscribe(topic, (err) => {
+    if (err) {
+      console.error(`❌ Failed to unsubscribe from topic "${topic}":`, err.message);
+      return false;
+    } else {
+      console.log(`📡 Unsubscribed from MQTT topic: ${topic}`);
+      activeSubscriptions.delete(topic);
+      return true;
+    }
+  });
+  
+  return true;
+}
+
+// Function to refresh device map (call when devices are added/updated)
+async function refreshDeviceMap() {
+  console.log('🔄 Refreshing device map...');
+  
+  // Clear current device map
+  deviceMap = {};
+  
+  // Reinitialize device map
+  await initializeDeviceMap();
 }
 
 // Export refresh function for use in routes
-export { refreshMQTTSubscriptions };
+export { refreshDeviceMap };
 
-// Initialize MQTT subscriptions after database connection
+// Initialize device map after database connection
 mongoose.connection.once('open', () => {
-  console.log('📡 Database connected, initializing MQTT subscriptions...');
-  setTimeout(initializeMQTTSubscriptions, 2000); // Small delay to ensure models are loaded
+  console.log('📡 Database connected, initializing device map...');
+  setTimeout(initializeDeviceMap, 2000); // Small delay to ensure models are loaded
 });
 
 // Handle database connection errors gracefully
@@ -306,7 +414,9 @@ app.get('/ping', (req, res) => {
     timestamp: new Date().toISOString(),
     status: 'healthy',
     mqttConnected: mqttClient ? mqttClient.connected : false,
-    deviceCount: Object.keys(deviceMap).length
+    deviceCount: Object.keys(deviceMap).length,
+    activeSubscriptions: activeSubscriptions.size,
+    connectedClients: clientSubscriptions.size
   });
 });
 

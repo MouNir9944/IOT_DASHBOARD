@@ -87,7 +87,7 @@ interface DeviceStatsResponse {
   data: DeviceStatsDataPoint[];
 }
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites'; // TODO: change to /api/sites/data/site/{siteId}/devices?type={type}
 
 const timePeriods = [
   { label: '7d', value: '7d', granularity: 'day' },
@@ -578,25 +578,30 @@ export default function DeviceDetailPage() {
     setChartLoading(true);
     
     try {
-      // Use GET request with query parameters
+      let url: string;
+      let response: Response;
+      
+      // Use GET request with query parameters for daily consumption
       const queryParams = new URLSearchParams({
         granularity,
         from,
         to
       });
       
-      const url = `${API_URL}/data/site/${siteId}/${deviceType}/device/${deviceId}/stats?${queryParams}`;
+      const statsUrl = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/${deviceType}/device/${deviceId}/stats?${queryParams}`;
       
-      console.log('🌐 Making request to:', url);
+      console.log('🌐 Making daily consumption request to:', statsUrl);
       console.log('🔧 Request params:', { from, to, granularity });
       
-      const response = await fetch(url);
+      response = await fetch(statsUrl);
       
       console.log('📥 API Response status:', response.status);
       
       if (response.ok) {
         const data = await response.json();
         console.log('📊 Device stats response:', data);
+        
+        // Handle daily consumption data
         console.log('📊 Raw response data array:', data);
         console.log('📊 Response data length:', data?.length);
         if (data && data.length > 0) {
@@ -613,51 +618,51 @@ export default function DeviceDetailPage() {
         // Map period to value using site page approach
         const valueMap = new Map(filled.map((v: any) => [v.period, v.totalIndex ?? v.consumption ?? v.total ?? v.value ?? 0]));
         const chartDataArray = periodLabels.map(label => valueMap.get(label) ?? 0);
-        
-        console.log('🔍 Period matching debug:');
-        console.log('- Generated labels:', periodLabels);
-        console.log('- API periods:', filled.map(d => d.period));
-        console.log('- Value map:', Array.from(valueMap.entries()));
-        console.log('- Chart data after mapping:', chartDataArray);
-        console.log('- Non-zero values count:', chartDataArray.filter(v => v > 0).length);
-        console.log('- 🎯 EXPECTED: Chart should show data for dates that match API periods');
-        
-        // Detailed label vs API period comparison
-        console.log('🔍 DETAILED PERIOD COMPARISON:');
-        periodLabels.forEach((label, index) => {
-          const apiMatch = filled.find(d => d.period === label);
-          const mappedValue = valueMap.get(label);
-          console.log(`  Label[${index}]: "${label}" | API Match: ${apiMatch ? 'YES' : 'NO'} | Value: ${mappedValue || 0}`);
-        });
-        
-        console.log('🔍 API DATA DETAILS:');
-        filled.forEach((item, index) => {
-          console.log(`  API[${index}]: period="${item.period}" | totalIndex=${item.totalIndex}`);
-        });
-        
-        // Additional debug for debugging empty data
-        if (chartDataArray.filter(v => v > 0).length === 0 && filled.length > 0) {
-          console.log('⚠️ WARNING: API has data but chart shows zeros!');
-          console.log('- API data count:', filled.length);
-          console.log('- First API item:', filled[0]);
-          console.log('- Label format test:', periodLabels[0], 'vs', filled[0]?.period);
-        }
-        
-        setChartData(chartDataArray);
-        setChartLabels(periodLabels);
-        console.log('📊 Chart data prepared:', chartDataArray.length, 'data points');
-        
-        // Also convert to historical data format for backward compatibility
-        const historicalPoints: HistoricalDataPoint[] = filled.map((item) => ({
-          timestamp: item.period,
-          value: item.totalIndex || item.lastReading || item.consumption || 0,
-          period: granularity === 'hour' ? 
-            new Date(item.period).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) :
-            new Date(item.period).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        }));
-        
-        setHistoricalData(historicalPoints);
-        console.log('✅ Device stats loaded:', filled.length, 'data points');
+      
+      console.log('🔍 Period matching debug:');
+      console.log('- Generated labels:', periodLabels);
+      console.log('- API periods:', filled.map(d => d.period));
+      console.log('- Value map:', Array.from(valueMap.entries()));
+      console.log('- Chart data after mapping:', chartDataArray);
+      console.log('- Non-zero values count:', chartDataArray.filter(v => v > 0).length);
+      console.log('- 🎯 EXPECTED: Chart should show data for dates that match API periods');
+      
+      // Detailed label vs API period comparison
+      console.log('🔍 DETAILED PERIOD COMPARISON:');
+      periodLabels.forEach((label, index) => {
+        const apiMatch = filled.find(d => d.period === label);
+        const mappedValue = valueMap.get(label);
+        console.log(`  Label[${index}]: "${label}" | API Match: ${apiMatch ? 'YES' : 'NO'} | Value: ${mappedValue || 0}`);
+      });
+      
+      console.log('🔍 API DATA DETAILS:');
+      filled.forEach((item, index) => {
+        console.log(`  API[${index}]: period="${item.period}" | totalIndex=${item.totalIndex}`);
+      });
+      
+      // Additional debug for debugging empty data
+      if (chartDataArray.filter(v => v > 0).length === 0 && filled.length > 0) {
+        console.log('⚠️ WARNING: API has data but chart shows zeros!');
+        console.log('- API data count:', filled.length);
+        console.log('- First API item:', filled[0]);
+        console.log('- Label format test:', periodLabels[0], 'vs', filled[0]?.period);
+      }
+      
+      setChartData(chartDataArray);
+      setChartLabels(periodLabels);
+      console.log('📊 Chart data prepared:', chartDataArray.length, 'data points');
+      
+      // Also convert to historical data format for backward compatibility
+      const historicalPoints: HistoricalDataPoint[] = filled.map((item) => ({
+        timestamp: item.period,
+        value: item.totalIndex || item.lastReading || item.consumption || 0,
+        period: granularity === 'hour' ? 
+          new Date(item.period).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) :
+          new Date(item.period).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+      }));
+      
+      setHistoricalData(historicalPoints);
+      console.log('✅ Device stats loaded:', filled.length, 'data points');
       } else {
         // Handle error response like site page
         console.error('❌ Failed to fetch device stats:', response.status);
@@ -780,7 +785,7 @@ export default function DeviceDetailPage() {
         limit: '100000' // Get up to 1000 data points
       });
       
-      const url = `${API_URL}/data/site/${siteId}/device/${deviceId}/historical?${queryParams}`;
+      const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/device/${deviceId}/historical?${queryParams}`;
       console.log(`🌐 Historical API Request URL:`, url);
       
       try {
@@ -1900,6 +1905,8 @@ export default function DeviceDetailPage() {
                 ))}
               </div>
               <div className="flex-1" />
+              
+
             </div>
             {showCustomPicker && (
               <LocalizationProvider dateAdapter={AdapterDateFns}>
@@ -1923,6 +1930,11 @@ export default function DeviceDetailPage() {
 
 
           {/* Chart Display */}
+          <div className="mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Daily Consumption Chart
+            </h3>
+          </div>
           {chartType === 'line' ? (
             <LineChart
               xAxis={[{ 

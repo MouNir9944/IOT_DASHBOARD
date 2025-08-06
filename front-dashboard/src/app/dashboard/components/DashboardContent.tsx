@@ -17,7 +17,10 @@ import { DateTimePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import TextField from '@mui/material/TextField';
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
+const SITES_API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
+const DATA_API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/data';
+
+console.log('API URLs:', { SITES_API_URL, DATA_API_URL, BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL });
 
 async function fetchGlobalStats({
   siteIds,
@@ -34,7 +37,7 @@ async function fetchGlobalStats({
   type: string,
   field: string
 }) {
-  const res = await fetch(`${API_URL}/data/global/${type}/stats`, {
+  const res = await fetch(`${DATA_API_URL}/global/${type}/stats`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ siteIds})
@@ -52,7 +55,7 @@ const timePeriods = [
 
 export default function DashboardContent() {
   const { data: session, status } = useSession();
-  const [sites, setSites] = useState([]);
+  const [sites, setSites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [energyData, setEnergyData] = useState<number[]>([]);
   const [waterData, setWaterData] = useState<number[]>([]);
@@ -307,22 +310,42 @@ export default function DashboardContent() {
 
     const fetchSites = async () => {
       setLoading(true);
-      let url = `${API_URL}/sites`;
-      if (session.user.role !== 'superadmin') {
-        url = `${API_URL}/sites/user/${session.user.id}`;
+      try {
+        let url = `${SITES_API_URL}`;
+        if (session.user.role !== 'superadmin') {
+          url = `${SITES_API_URL}/user/${session.user.id}`;
+        }
+        console.log('Fetching sites from URL:', url);
+        const res = await fetch(url);
+        console.log('Sites API response status:', res.status);
+        if (!res.ok) {
+          const errorText = await res.text();
+          console.error('Sites API error response:', errorText);
+          throw new Error(`Failed to fetch sites: ${res.status} - ${errorText}`);
+        }
+        const data = await res.json();
+        console.log('Sites API raw response:', data);
+        // Ensure data is an array
+        if (Array.isArray(data)) {
+          setSites(data);
+          console.log('Fetched sites:', data);
+        } else {
+          console.error('Sites API returned non-array data:', data);
+          setSites([]);
+        }
+      } catch (error) {
+        console.error('Error fetching sites:', error);
+        setSites([]);
+      } finally {
+        setLoading(false);
       }
-      const res = await fetch(url);
-      const data = await res.json();
-      setSites(data);
-      console.log('Fetched sites:', data);
-      setLoading(false);
     };
 
     fetchSites();
   }, [session]);
 
   useEffect(() => {
-    if (!session?.user || sites.length === 0) return;
+    if (!session?.user || !Array.isArray(sites) || sites.length === 0) return;
 
     const siteIds = sites.map((site: any) => site._id);
     const { from, to } = getDateRange();
@@ -395,7 +418,7 @@ export default function DashboardContent() {
     // Fetch latest index values for each type
     const fetchIndex = async (type: string, setter: (v: number) => void) => {
       try {
-        const res = await fetch(`${API_URL}/data/global/${type}/index`, {
+        const res = await fetch(`${DATA_API_URL}/global/${type}/index`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ siteIds })

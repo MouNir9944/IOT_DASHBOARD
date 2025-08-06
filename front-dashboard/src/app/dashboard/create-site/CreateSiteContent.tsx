@@ -1,26 +1,42 @@
 'use client';
 // ...your imports for map, react, etc. (no dynamic import of itself)
 import React, { useState, useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
-import { Map as LeafletMap } from 'leaflet';
 import { useSession } from 'next-auth/react';
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
-// Fix default icon issue in Leaflet with React
-const DefaultIcon = L.icon({
-  iconUrl: 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-icon.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-shadow.png',
-  shadowSize: [41, 41],
-});
-L.Marker.prototype.options.icon = DefaultIcon;
+// Dynamic imports for client-side only
+let MapContainer: any, TileLayer: any, Marker: any, useMapEvents: any, useMap: any, L: any, LeafletMap: any;
 
-// Custom icons for each site type
-const typeIcons: { [key: string]: L.Icon } = {
+const loadLeafletComponents = async () => {
+  if (typeof window === 'undefined') return;
+  
+  const reactLeaflet = await import('react-leaflet');
+  const leaflet = await import('leaflet');
+  
+  MapContainer = reactLeaflet.MapContainer;
+  TileLayer = reactLeaflet.TileLayer;
+  Marker = reactLeaflet.Marker;
+  useMapEvents = reactLeaflet.useMapEvents;
+  useMap = reactLeaflet.useMap;
+  L = leaflet.default;
+  LeafletMap = leaflet.Map;
+  
+  // Fix default icon issue in Leaflet with React
+  const DefaultIcon = L.icon({
+    iconUrl: 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-icon.png',
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34],
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-shadow.png',
+    shadowSize: [41, 41],
+  });
+  L.Marker.prototype.options.icon = DefaultIcon;
+};
+
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites'; // TODO: change to /api/sites/user/{userId} 
+
+// Custom icons for each site type - will be created after L is loaded
+const getTypeIcons = (L: any): { [key: string]: any } => ({
   manufacturing: L.icon({
     iconUrl: 'https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/icons/gear-fill.svg',
     iconSize: [32, 32],
@@ -56,11 +72,22 @@ const typeIcons: { [key: string]: L.Icon } = {
     popupAnchor: [0, -32],
     className: 'leaflet-office-icon',
   }),
-};
+});
+
+const getDefaultIcon = (L: any) => L.icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-icon.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowUrl: 'https://unpkg.com/leaflet@1.9.3/dist/images/marker-shadow.png',
+  shadowSize: [41, 41],
+});
 
 function LocationMarker({ position, setPosition }: { position: [number, number] | null, setPosition: (pos: [number, number]) => void }) {
+  if (!useMapEvents) return null;
+  
   useMapEvents({
-    click(e) {
+    click(e: any) {
       setPosition([e.latlng.lat, e.latlng.lng]);
     },
   });
@@ -79,6 +106,8 @@ interface Site {
 }
 
 function FitBounds({ sites }: { sites: Site[] }) {
+  if (!useMap || !L) return null;
+  
   const map = useMap();
   React.useEffect(() => {
     if (sites.length === 0) return;
@@ -89,6 +118,8 @@ function FitBounds({ sites }: { sites: Site[] }) {
 }
 
 function CenterMapButton({ sites }: { sites: Site[] }) {
+  if (!useMap || !L) return null;
+  
   const map = useMap();
   const handleCenter = () => {
     const validSites = sites
@@ -128,10 +159,18 @@ export default function CreateSiteContent() {
   const [editDescription, setEditDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoaded, setIsLoaded] = useState(false);
   const { data: session } = useSession();
 
   // Only allow admins to create sites
   const isAdmin = session?.user?.role === 'admin' || session?.user?.role === 'superadmin';
+
+  // Load Leaflet components on mount
+  useEffect(() => {
+    loadLeafletComponents().then(() => {
+      setIsLoaded(true);
+    });
+  }, []);
 
   // Fetch sites on mount
   useEffect(() => {
@@ -242,6 +281,34 @@ export default function CreateSiteContent() {
       setLoading(false);
     }
   };
+
+  // Show loading state while components are loading
+  if (!isLoaded || !MapContainer) {
+    return (
+      <div className="flex flex-col lg:flex-row gap-8 p-4 lg:p-8 bg-gray-50 min-h-screen">
+        <div className="flex-1 flex flex-col items-stretch">
+          <div className="rounded-xl shadow-lg border bg-white overflow-hidden mb-6">
+            <div className="h-[350px] w-full flex items-center justify-center">
+              <div className="text-gray-500">Loading map...</div>
+            </div>
+          </div>
+          <div className="rounded-xl shadow-lg border bg-white p-6">
+            <h2 className="text-2xl font-bold mb-4 text-blue-700">Create Site</h2>
+            <div className="text-gray-500">Loading form...</div>
+          </div>
+        </div>
+        <div className="w-full lg:w-96 flex-shrink-0">
+          <div className="rounded-xl shadow-lg border bg-white p-6">
+            <h3 className="font-semibold text-lg mb-4 text-blue-700">Sites</h3>
+            <div className="text-gray-500">Loading sites...</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const typeIcons = getTypeIcons(L);
+  const DefaultIcon = getDefaultIcon(L);
 
   return (
     <div className="flex flex-col lg:flex-row gap-8 p-4 lg:p-8 bg-gray-50 min-h-screen">

@@ -19,7 +19,7 @@ interface DashboardLayoutProps {
   user: User;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites'; // TODO: change to /api/sites/user/{userId}
 
 export default function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const [sites, setSites] = useState<any[]>([]);
@@ -34,7 +34,19 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
       }
       const res = await fetch(url);
       const data = await res.json();
-      setSites(data);
+      
+      // Handle error response - if user not found, try fetching all sites
+      if (data.error && data.error.includes('User not found') && session.user.role !== 'superadmin') {
+        console.log('User not found, fetching all sites instead');
+        const allSitesRes = await fetch(API_URL);
+        const allSitesData = await allSitesRes.json();
+        setSites(Array.isArray(allSitesData) ? allSitesData : []);
+      } else if (data.error) {
+        console.error('Error fetching sites:', data);
+        setSites([]);
+      } else {
+        setSites(Array.isArray(data) ? data : []);
+      }
     };
     fetchSites();
   }, [session]);

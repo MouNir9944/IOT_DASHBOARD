@@ -4,6 +4,12 @@ import Site from '../models/Site.js';
 import Device from '../models/Device.js';
 
 const router = express.Router();
+
+// Logging middleware for all data routes
+router.use((req, res, next) => {
+  console.log(`📊 Data API - ${req.method} ${req.path} - IP: ${req.ip}`);
+  next();
+});
     // Use mongoose.connection everywhere
     const mainDB = mongoose.connection;
     
@@ -13,11 +19,21 @@ const router = express.Router();
     
     mainDB.on('connected', () => console.log('✅ Main DB Connected'));
     mainDB.on('error', (err) => console.error('❌ Main DB Error:', err));
-// Helper to get DB name by site ID (using site name)
+    // Helper to get DB name by site ID (using site name)
     async function getSiteDbName(siteId) {
         const site = await Site.findById(siteId);
         if (!site || !site.name) throw new Error(`Site ${siteId} not found or has no name`);
         return site.name.replace(/\s+/g, '_');
+    }
+    
+    // Helper to validate daily consumption calculation
+    function validateDailyConsumption(consumption, firstReading, lastReading, dayStart, dayEnd) {
+        if (consumption < 0) {
+            console.warn(`[validateDailyConsumption] Negative consumption detected: ${consumption}`);
+            console.warn(`[validateDailyConsumption] First reading: ${firstReading} at ${dayStart}`);
+            console.warn(`[validateDailyConsumption] Last reading: ${lastReading} at ${dayEnd}`);
+        }
+        return consumption;
     }
 
     // Routes using corrected DB name from site name
@@ -42,67 +58,176 @@ const router = express.Router();
     
         const SensorModel = siteConnection.model(collectionName, new mongoose.Schema({}, { strict: false }), collectionName);
     
-        const match = { [valueKey]: { $exists: true }, deviceId: { $exists: true } };
-        if (from || to) {
-            match.timestamp = {};
-            if (from) match.timestamp.$gte = new Date(from);
-            if (to) match.timestamp.$lte = new Date(to);
-        }
-    
+        // Build base match first (without timestamp conditions to avoid type issues)
+        const baseMatch = {
+            deviceId: { $exists: true },
+            $or: [
+                { [valueKey]: { $exists: true } },
+                { value: { $exists: true } },
+                { consumption: { $exists: true } },
+                { production: { $exists: true } }
+            ]
+        };
+
+        let pipeline;
         
-    
-        const sampleDocs = await SensorModel.find(match).limit(5);
-    
-    
-        const pipeline = [
-            { $match: match },
-            
-            // Convert timestamp to Date if needed (handle string, number, or Date)
-            { 
-                $addFields: { 
-                    timestamp: { 
-                        $switch: {
-                            branches: [
-                                {
-                                    case: { $eq: [{ $type: "$timestamp" }, "string"] },
-                                    then: { $dateFromString: { dateString: "$timestamp" } }
-                                },
-                                {
-                                    case: { $eq: [{ $type: "$timestamp" }, "double"] },
-                                    then: { $toDate: "$timestamp" }
-                                },
-                                {
-                                    case: { $eq: [{ $type: "$timestamp" }, "long"] },
-                                    then: { $toDate: "$timestamp" }
-                                },
-                                {
-                                    case: { $eq: [{ $type: "$timestamp" }, "int"] },
-                                    then: { $toDate: "$timestamp" }
-                                },
-                                {
-                                    case: { $eq: [{ $type: "$timestamp" }, "date"] },
-                                    then: "$timestamp"
-                                }
-                            ],
-                            default: new Date()
+        if (granularity === 'day') {
+            // For daily granularity, calculate consumption from 00:00 to 23:59 for each day
+            // This ensures we get the correct daily consumption by:
+            // 1. Creating day boundaries (00:00:00 to 23:59:59)
+            // 2. Finding the first and last readings within each day boundary
+            // 3. Calculating the difference to get daily consumption
+            // 4. Summing consumption across all devices for each day
+            pipeline = [
+                { $match: baseMatch },
+                // Normalize timestamp
+                { 
+                    $addFields: { 
+                        timestamp: { 
+                            $switch: {
+                                branches: [
+                                    { case: { $eq: [{ $type: "$timestamp" }, "string"] }, then: { $dateFromString: { dateString: "$timestamp" } } },
+                                    { case: { $eq: [{ $type: "$timestamp" }, "double"] }, then: { $toDate: "$timestamp" } },
+                                    { case: { $eq: [{ $type: "$timestamp" }, "long"] }, then: { $toDate: "$timestamp" } },
+                                    { case: { $eq: [{ $type: "$timestamp" }, "int"] }, then: { $toDate: "$timestamp" } },
+                                    { case: { $eq: [{ $type: "$timestamp" }, "date"] }, then: "$timestamp" }
+                                ],
+                                default: new Date()
+                            }
+                        }
+                    }
+                },
+                // Apply range filter after normalization
+                ...(from || to ? [{ $match: { timestamp: { ...(from ? { $gte: new Date(from) } : {}), ...(to ? { $lte: new Date(to) } : {}) } } }] : []),
+                // Add day boundaries (00:00 to 23:59)
+                {
+                    $addFields: {
+                        dayStart: {
+                            $dateFromParts: {
+                                year: { $year: "$timestamp" },
+                                month: { $month: "$timestamp" },
+                                day: { $dayOfMonth: "$timestamp" },
+                                hour: 0,
+                                minute: 0,
+                                second: 0
+                            }
+                        },
+                        dayEnd: {
+                            $dateFromParts: {
+                                year: { $year: "$timestamp" },
+                                month: { $month: "$timestamp" },
+                                day: { $dayOfMonth: "$timestamp" },
+                                hour: 23,
+                                minute: 59,
+                                second: 59
+                            }
+                        }
+                    }
+                },
+                // Project the reading value and day
+                { 
+                    $project: { 
+                        deviceId: 1, 
+                        readingValue: { $ifNull: [ `$${valueKey}`, { $ifNull: [ "$value", { $ifNull: [ "$consumption", { $ifNull: [ "$production", 0 ] } ] } ] } ] }, 
+                        timestamp: 1, 
+                        dayStart: 1,
+                        dayEnd: 1,
+                        period: { $dateToString: { format, date: "$timestamp" } }
+                    } 
+                },
+                // Sort by device and timestamp
+                { $sort: { deviceId: 1, timestamp: 1 } },
+                // Group by device and day to get first and last readings of each day
+                { 
+                    $group: { 
+                        _id: { 
+                            deviceId: "$deviceId", 
+                            period: "$period",
+                            dayStart: "$dayStart",
+                            dayEnd: "$dayEnd"
+                        }, 
+                        first: { $first: "$readingValue" }, 
+                        last: { $last: "$readingValue" },
+                        firstTimestamp: { $first: "$timestamp" },
+                        lastTimestamp: { $last: "$timestamp" }
+                    } 
+                },
+                // Calculate consumption for each device-day
+                { 
+                    $project: { 
+                        period: "$_id.period", 
+                        deviceId: "$_id.deviceId", 
+                        dayStart: "$_id.dayStart",
+                        dayEnd: "$_id.dayEnd",
+                        consumption: { $subtract: ["$last", "$first"] },
+                        firstReading: "$first",
+                        lastReading: "$last",
+                        firstTimestamp: 1,
+                        lastTimestamp: 1
+                    } 
+                },
+                // Group by period to sum consumption across all devices
+                { $group: { _id: "$period", total: { $sum: "$consumption" } } },
+                // Sort by period
+                { $sort: { _id: 1 } },
+                // Add validation stage
+                {
+                    $addFields: {
+                        validatedTotal: {
+                            $cond: {
+                                if: { $lt: ["$total", 0] },
+                                then: { $abs: "$total" }, // Convert negative to positive for display
+                                else: "$total"
+                            }
                         }
                     }
                 }
-            },
-    
-            { $project: { deviceId: 1, value: { $ifNull: [ `$${valueKey}`, 0 ] }, timestamp: 1, period: { $dateToString: { format, date: "$timestamp" } } } },
-            { $sort: { deviceId: 1, timestamp: 1 } },
-            { $group: { _id: { deviceId: "$deviceId", period: "$period" }, first: { $first: "$value" }, last: { $last: "$value" } } },
-            { $project: { period: "$_id.period", deviceId: "$_id.deviceId", delta: { $subtract: ["$last", "$first"] } } },
-            { $group: { _id: "$period", total: { $sum: "$delta" } } },
-    
-            { $sort: { _id: 1 } }
-        ];
+            ];
+        } else {
+            // For other granularities, use the original approach
+            pipeline = [
+                { $match: baseMatch },
+                // Normalize timestamp
+                { 
+                    $addFields: { 
+                        timestamp: { 
+                            $switch: {
+                                branches: [
+                                    { case: { $eq: [{ $type: "$timestamp" }, "string"] }, then: { $dateFromString: { dateString: "$timestamp" } } },
+                                    { case: { $eq: [{ $type: "$timestamp" }, "double"] }, then: { $toDate: "$timestamp" } },
+                                    { case: { $eq: [{ $type: "$timestamp" }, "long"] }, then: { $toDate: "$timestamp" } },
+                                    { case: { $eq: [{ $type: "$timestamp" }, "int"] }, then: { $toDate: "$timestamp" } },
+                                    { case: { $eq: [{ $type: "$timestamp" }, "date"] }, then: "$timestamp" }
+                                ],
+                                default: new Date()
+                            }
+                        }
+                    }
+                },
+                // Apply range filter after normalization
+                ...(from || to ? [{ $match: { timestamp: { ...(from ? { $gte: new Date(from) } : {}), ...(to ? { $lte: new Date(to) } : {}) } } }] : []),
+                { $project: { deviceId: 1, readingValue: { $ifNull: [ `$${valueKey}`, { $ifNull: [ "$value", { $ifNull: [ "$consumption", { $ifNull: [ "$production", 0 ] } ] } ] } ] }, timestamp: 1, period: { $dateToString: { format, date: "$timestamp" } } } },
+                { $sort: { deviceId: 1, timestamp: 1 } },
+                { $group: { _id: { deviceId: "$deviceId", period: "$period" }, first: { $first: "$readingValue" }, last: { $last: "$readingValue" } } },
+                { $project: { period: "$_id.period", deviceId: "$_id.deviceId", delta: { $subtract: ["$last", "$first"] } } },
+                { $group: { _id: "$period", total: { $sum: "$delta" } } },
+                { $sort: { _id: 1 } }
+            ];
+        }
     
         const result = await SensorModel.aggregate(pipeline);
         await siteConnection.close();
-    
-        res.status(200).json(result.map(r => ({ period: r._id, totalIndex: r.total })));
+        
+        // Log the aggregation result for debugging
+        console.log(`[handleStats] ${collectionName} for site ${siteId}, granularity: ${granularity}`);
+        console.log(`[handleStats] Date range: from ${from} to ${to}`);
+        console.log(`[handleStats] Raw result:`, result);
+        
+        res.status(200).json(result.map(r => ({ 
+            period: r._id, 
+            totalIndex: r.validatedTotal || r.total,
+            originalTotal: r.total // Include original for debugging
+        })));
         } catch (err) {
         console.error(err);
         res.status(500).json({ error: err.message });
@@ -123,7 +248,18 @@ const router = express.Router();
         const SensorModel = siteConnection.model(collectionName, new mongoose.Schema({}, { strict: false }), collectionName);
     
         const pipeline = [
-            { $match: { [valueKey]: { $exists: true }, deviceId: { $exists: true } } },
+            // Match docs that have a reading field and a deviceId
+            { 
+                $match: { 
+                    deviceId: { $exists: true },
+                    $or: [
+                        { [valueKey]: { $exists: true } },
+                        { value: { $exists: true } },
+                        { consumption: { $exists: true } },
+                        { production: { $exists: true } }
+                    ]
+                } 
+            },
             
             // Convert timestamp to Date if needed for proper sorting (handle string, number, or Date)
             { 
@@ -158,9 +294,15 @@ const router = express.Router();
                 }
             },
             
+            { $project: {
+                deviceId: 1,
+                timestamp: 1,
+                readingValue: {
+                    $ifNull: [ `$${valueKey}`, { $ifNull: [ "$value", { $ifNull: [ "$consumption", { $ifNull: [ "$production", 0 ] } ] } ] } ]
+                }
+            }},
             { $sort: { deviceId: 1, timestamp: -1 } },
-    
-            { $group: { _id: "$deviceId", lastReading: { $first: `$${valueKey}` } } },
+            { $group: { _id: "$deviceId", lastReading: { $first: "$readingValue" } } },
             { $group: { _id: null, totalIndex: { $sum: "$lastReading" } } }
     
         ];
@@ -206,27 +348,17 @@ const router = express.Router();
             const SensorModel = siteConnection.model(collectionName, new mongoose.Schema({}, { strict: false }), collectionName);
             console.log('🔍 [Device Stats] Using collection:', collectionName);
         
-            // Match for specific device
-            const match = { 
-                [valueKey]: { $exists: true }, 
-                deviceId: deviceId
+            // Base match for specific device (no timestamp condition yet). Allow any reading field.
+            const baseMatch = { 
+                deviceId: deviceId,
+                $or: [
+                    { [valueKey]: { $exists: true } },
+                    { value: { $exists: true } },
+                    { consumption: { $exists: true } },
+                    { production: { $exists: true } }
+                ]
             };
-            
-            if (from || to) {
-                match.timestamp = {};
-                if (from) {
-                    const fromTimestamp = new Date(from).getTime();
-                    match.timestamp.$gte = fromTimestamp;
-                    console.log('🔍 [Device Stats] From date converted:', from, '->', fromTimestamp);
-                }
-                if (to) {
-                    const toTimestamp = new Date(to).getTime();
-                    match.timestamp.$lte = toTimestamp;
-                    console.log('🔍 [Device Stats] To date converted:', to, '->', toTimestamp);
-                }
-            }
-        
-            console.log('🔍 [Device Stats] Match query:', JSON.stringify(match, null, 2));
+            console.log('🔍 [Device Stats] Base match query:', JSON.stringify(baseMatch, null, 2));
             console.log('🔍 [Device Stats] Collection name:', collectionName);
             console.log('🔍 [Device Stats] Value key:', valueKey);
             
@@ -234,8 +366,8 @@ const router = express.Router();
             const totalCount = await SensorModel.countDocuments({ deviceId: deviceId });
             console.log('🔍 [Device Stats] Total documents for device:', totalCount);
             
-            const matchingCount = await SensorModel.countDocuments(match);
-            console.log('🔍 [Device Stats] Documents matching query:', matchingCount);
+            const matchingCount = await SensorModel.countDocuments(baseMatch);
+            console.log('🔍 [Device Stats] Documents matching base match (no date filter):', matchingCount);
             
             // Let's also see a sample document
             const sampleDoc = await SensorModel.findOne({ deviceId: deviceId }).limit(1);
@@ -268,7 +400,7 @@ const router = express.Router();
             }
             
             const pipeline = [
-                { $match: match },
+                { $match: baseMatch },
                 
                 // Convert timestamp to Date if needed (handle string, number, or Date)
                 { 
@@ -302,22 +434,26 @@ const router = express.Router();
                         }
                     }
                 },
+                // Apply date range AFTER normalization so all formats are handled
+                ...(from || to ? [{ $match: { timestamp: { ...(from ? { $gte: new Date(from) } : {}), ...(to ? { $lte: new Date(to) } : {}) } } }] : []),
         
                 { $project: { 
                     deviceId: 1, 
-                    value: { $ifNull: [ `$${valueKey}`, 0 ] }, 
+                    readingValue: { 
+                        $ifNull: [ `$${valueKey}`, { $ifNull: [ "$value", { $ifNull: [ "$consumption", { $ifNull: [ "$production", 0 ] } ] } ] } ]
+                    }, 
                     timestamp: 1, 
                     period: { $dateToString: { format, date: "$timestamp" } } 
                 } },
                 { $sort: { timestamp: 1 } },
                 { $group: { 
                     _id: "$period", 
-                    first: { $first: "$value" }, 
-                    last: { $last: "$value" },
+                    first: { $first: "$readingValue" }, 
+                    last: { $last: "$readingValue" },
                     count: { $sum: 1 },
-                    avg: { $avg: "$value" },
-                    min: { $min: "$value" },
-                    max: { $max: "$value" }
+                    avg: { $avg: "$readingValue" },
+                    min: { $min: "$readingValue" },
+                    max: { $max: "$readingValue" }
                 } },
                 { $project: { 
                     period: "$_id", 
@@ -335,14 +471,67 @@ const router = express.Router();
             console.log('🔍 [Device Stats] About to run aggregation pipeline...');
             console.log('🔍 [Device Stats] Pipeline:', JSON.stringify(pipeline, null, 2));
             
-            const result = await SensorModel.aggregate(pipeline);
+            let result = await SensorModel.aggregate(pipeline);
+            // Smart fix for "today shows 0" when only one reading exists in the current period
+            try {
+                if (result.length > 0 && (granularity === 'day' || granularity === 'hour')) {
+                    const lastIndex = result.length - 1;
+                    const lastBucket = result[lastIndex];
+                    const lastCount = lastBucket?.count ?? 0;
+                    const lastLast = lastBucket?.last ?? null;
+                    const lastConsumption = lastBucket?.consumption ?? 0;
+                    // Build start of current bucket in UTC
+                    let bucketStart;
+                    if (granularity === 'day') {
+                        bucketStart = new Date(`${lastBucket.period}T00:00:00.000Z`);
+                    } else {
+                        // hour format already includes HH:00:00, append Z
+                        bucketStart = new Date(`${lastBucket.period}Z`);
+                    }
+                    if (!isNaN(bucketStart.getTime()) && lastLast !== null && (lastCount <= 1 || lastConsumption <= 0)) {
+                        const prevDoc = await SensorModel.aggregate([
+                            { $match: { deviceId: deviceId, [valueKey]: { $exists: true } } },
+                            {
+                                $addFields: {
+                                    ts: {
+                                        $switch: {
+                                            branches: [
+                                                { case: { $eq: [{ $type: "$timestamp" }, "string"] }, then: { $dateFromString: { dateString: "$timestamp" } } },
+                                                { case: { $eq: [{ $type: "$timestamp" }, "double"] }, then: { $toDate: "$timestamp" } },
+                                                { case: { $eq: [{ $type: "$timestamp" }, "long"] }, then: { $toDate: "$timestamp" } },
+                                                { case: { $eq: [{ $type: "$timestamp" }, "int"] }, then: { $toDate: "$timestamp" } },
+                                                { case: { $eq: [{ $type: "$timestamp" }, "date"] }, then: "$timestamp" }
+                                            ],
+                                            default: new Date()
+                                        }
+                                    }
+                                }
+                            },
+                            { $match: { ts: { $lt: bucketStart } } },
+                            { $sort: { ts: -1 } },
+                            { $limit: 1 },
+                            { $project: { _id: 0, prev: `$${valueKey}` } }
+                        ]);
+                        if (prevDoc && prevDoc.length > 0) {
+                            const prevValue = prevDoc[0].prev ?? 0;
+                            const runningDelta = lastLast - prevValue;
+                            if (runningDelta > 0) {
+                                // Mutate last bucket consumption to reflect running delta
+                                result[lastIndex].consumption = runningDelta;
+                            }
+                        }
+                    }
+                }
+            } catch (fixErr) {
+                console.warn('⚠️ [Device Stats] Smart today-fix failed:', fixErr?.message);
+            }
             console.log('🔍 [Device Stats] Aggregation results:', JSON.stringify(result, null, 2));
             console.log('🔍 [Device Stats] Results count:', result.length);
             
             // If empty results, let's try a simpler query to debug
             if (result.length === 0) {
-                console.log('🔍 [Device Stats] Trying simple match only...');
-                const simpleResult = await SensorModel.find(match).limit(5);
+                console.log('🔍 [Device Stats] Trying simple match only (baseMatch)...');
+                const simpleResult = await SensorModel.find(baseMatch).limit(5);
                 console.log('🔍 [Device Stats] Simple match results:', simpleResult.length, 'documents');
                 if (simpleResult.length > 0) {
                     console.log('🔍 [Device Stats] First simple result:', JSON.stringify(simpleResult[0], null, 2));
@@ -676,12 +865,13 @@ const router = express.Router();
             res.status(500).json({ error: err.message });
         }
     }
-    
+     
     // Get historical device data for charts (simple raw data without calculations)
     async function handleDeviceHistoricalData(req, res) {
         try {
+            console.log('req.query', req.query);
             const { siteId, deviceId } = req.params;
-            const { granularity = 'day', from, to, limit = 100000 } = req.query;
+            const { granularity = 'day', from, to ,limit=1000000} = req.query;
             
             console.log('📈 [Device Historical Data] Request params:', { siteId, deviceId });
             console.log('📈 [Device Historical Data] Request query:', { granularity, from, to, limit });
@@ -844,29 +1034,12 @@ const router = express.Router();
         }
     });
 
-    // Raw device data API - gets raw sensor readings from device type collection
-    // GET /api/data/site/{siteId}/{type}/device/{deviceId}/raw
-    // Query parameters:
-    //   - range: predefined time range ('1h', '6h', '12h', '24h', '1d', '7d', '30d', '90d')
-    //   - from: ISO date string (optional) - custom start date filter
-    //   - to: ISO date string (optional) - custom end date filter  
-    //   - limit: number (default: 100) - max records to return
-    //   - sort: 'asc' or 'desc' (default: 'desc') - sort by timestamp
-    // Returns: { device: {...}, query: {...}, data: [...] }
     // Priority: range parameter overrides from/to parameters
     router.get('/site/:siteId/:type/device/:deviceId/raw', async (req, res) => {
         await handleDeviceRawData(req, res);
     });
     
-    // Get historical device data API - gets raw sensor readings for charts
-    // GET /api/data/site/{siteId}/device/{deviceId}/historical
-    // Query parameters:
-    //   - granularity: 'hour', 'day', 'week', 'month', 'year' (default: 'day')
-    //   - from: ISO date string (optional) - custom start date filter
-    //   - to: ISO date string (optional) - custom end date filter  
-    //   - limit: number (default: 1000) - max records to return
-    // Returns: { device: {...}, query: {...}, data: [...] }
-    // Priority: from/to parameters override granularity
+
     router.get('/site/:siteId/device/:deviceId/historical', async (req, res) => {
         await handleDeviceHistoricalData(req, res);
     });
@@ -900,86 +1073,178 @@ const router = express.Router();
             });
     
             const SensorModel = siteConnection.model(type, new mongoose.Schema({}, { strict: false }), type);
-    
-    
-            const match = {
-            [field]: { $exists: true },
-            deviceId: { $exists: true },
+
+            // Base match without timestamp type issues (support multiple value field names)
+            const baseMatch = {
+              deviceId: { $exists: true },
+              $or: [
+                { value: { $exists: true } },
+                { consumption: { $exists: true } },
+                { production: { $exists: true } }
+              ]
             };
-    
-            if (from || to) {
-            match.timestamp = {};
-            if (from) match.timestamp.$gte = new Date(from);
-            if (to) match.timestamp.$lte = new Date(to);
-            }
-    
-            const pipeline = [
-            { $match: match },
-            
-            // Convert timestamp to Date if needed (handle string, number, or Date)
-            { 
-                $addFields: { 
+
+            let pipeline;
+            if (granularity === 'day') {
+              // For daily granularity, calculate consumption from 00:00 to 23:59 for each day
+              // This ensures we get the correct daily consumption by:
+              // 1. Creating day boundaries (00:00:00 to 23:59:59)
+              // 2. Finding the first and last readings within each day boundary
+              // 3. Calculating the difference to get daily consumption
+              // 4. Summing consumption across all devices for each day
+              pipeline = [
+                { $match: baseMatch },
+                // Normalize timestamp to Date first so we can safely filter by range
+                { 
+                  $addFields: { 
                     timestamp: { 
-                        $switch: {
-                            branches: [
-                                {
-                                    case: { $eq: [{ $type: "$timestamp" }, "string"] },
-                                    then: { $dateFromString: { dateString: "$timestamp" } }
-                                },
-                                {
-                                    case: { $eq: [{ $type: "$timestamp" }, "double"] },
-                                    then: { $toDate: "$timestamp" }
-                                },
-                                {
-                                    case: { $eq: [{ $type: "$timestamp" }, "long"] },
-                                    then: { $toDate: "$timestamp" }
-                                },
-                                {
-                                    case: { $eq: [{ $type: "$timestamp" }, "int"] },
-                                    then: { $toDate: "$timestamp" }
-                                },
-                                {
-                                    case: { $eq: [{ $type: "$timestamp" }, "date"] },
-                                    then: "$timestamp"
-                                }
-                            ],
-                            default: new Date()
-                        }
+                      $switch: {
+                        branches: [
+                          { case: { $eq: [{ $type: "$timestamp" }, "string"] }, then: { $dateFromString: { dateString: "$timestamp" } } },
+                          { case: { $eq: [{ $type: "$timestamp" }, "double"] }, then: { $toDate: "$timestamp" } },
+                          { case: { $eq: [{ $type: "$timestamp" }, "long"] }, then: { $toDate: "$timestamp" } },
+                          { case: { $eq: [{ $type: "$timestamp" }, "int"] }, then: { $toDate: "$timestamp" } },
+                          { case: { $eq: [{ $type: "$timestamp" }, "date"] }, then: "$timestamp" }
+                        ],
+                        default: new Date()
+                      }
                     }
-                }
-            },
-            
-            {
-                $project: {
-                deviceId: 1,
-                value: `$${field}`,
-                timestamp: 1,
-                period: { $dateToString: { format, date: "$timestamp" } }
-                }
-            },
-            { $sort: { deviceId: 1, timestamp: 1 } },
-            {
-                $group: {
-                _id: { deviceId: "$deviceId", period: "$period" },
-                first: { $first: "$value" },
-                last: { $last: "$value" }
-                }
-            },
-            {
-                $project: {
-                period: "$_id.period",
-                deviceId: "$_id.deviceId",
-                delta: { $subtract: ["$last", "$first"] }
-                }
-            },
-            {
-                $group: {
-                _id: "$period",
-                total: { $sum: "$delta" }
-                }
-            },
-            { $sort: { _id: 1 } }
-            ];
+                  }
+                },
+                // Apply date range filter after normalization
+                ...(from || to ? [{
+                  $match: {
+                    ...(from ? { timestamp: { $gte: new Date(from) } } : {}),
+                    ...(to ? { timestamp: { ...(from ? {} : {}), $lte: new Date(to) } } : {})
+                  }
+                }] : []),
+                // Add day boundaries (00:00 to 23:59)
+                {
+                  $addFields: {
+                    dayStart: { $dateFromParts: { year: { $year: "$timestamp" }, month: { $month: "$timestamp" }, day: { $dayOfMonth: "$timestamp" }, hour: 0, minute: 0, second: 0 } },
+                    dayEnd: { $dateFromParts: { year: { $year: "$timestamp" }, month: { $month: "$timestamp" }, day: { $dayOfMonth: "$timestamp" }, hour: 23, minute: 59, second: 59 } }
+                  }
+                },
+                // Project the reading value and day
+                {
+                  $project: {
+                    deviceId: 1,
+                    readingValue: {
+                      $ifNull: [
+                        "$value",
+                        { $ifNull: ["$consumption", { $ifNull: ["$production", 0] }] }
+                      ]
+                    },
+                    timestamp: 1,
+                    dayStart: 1,
+                    dayEnd: 1,
+                    period: { $dateToString: { format, date: "$timestamp" } }
+                  }
+                },
+                // Sort by device and timestamp
+                { $sort: { deviceId: 1, timestamp: 1 } },
+                // Group by device and day to get first and last readings of each day
+                {
+                  $group: {
+                    _id: { deviceId: "$deviceId", period: "$period", dayStart: "$dayStart", dayEnd: "$dayEnd" },
+                    first: { $first: "$readingValue" },
+                    last: { $last: "$readingValue" },
+                    firstTimestamp: { $first: "$timestamp" },
+                    lastTimestamp: { $last: "$timestamp" }
+                  }
+                },
+                // Calculate consumption for each device-day
+                {
+                  $project: {
+                    period: "$_id.period",
+                    deviceId: "$_id.deviceId",
+                    dayStart: "$_id.dayStart",
+                    dayEnd: "$_id.dayEnd",
+                    consumption: { $subtract: ["$last", "$first"] },
+                    firstReading: "$first",
+                    lastReading: "$last",
+                    firstTimestamp: 1,
+                    lastTimestamp: 1
+                  }
+                },
+                // Group by period to sum consumption across all devices
+                {
+                  $group: {
+                    _id: "$period",
+                    total: { $sum: "$consumption" }
+                  }
+                },
+                // Sort by period
+                { $sort: { _id: 1 } },
+                // Add validation stage
+                { $addFields: { validatedTotal: { $cond: { if: { $lt: ["$total", 0] }, then: { $abs: "$total" }, else: "$total" } } } }
+              ];
+            } else {
+              // Original pipeline for other granularities (month, year, etc.)
+              pipeline = [
+                { $match: baseMatch },
+                // Normalize timestamp to Date first so we can safely filter by range
+                { 
+                  $addFields: { 
+                    timestamp: { 
+                      $switch: {
+                        branches: [
+                          { case: { $eq: [{ $type: "$timestamp" }, "string"] }, then: { $dateFromString: { dateString: "$timestamp" } } },
+                          { case: { $eq: [{ $type: "$timestamp" }, "double"] }, then: { $toDate: "$timestamp" } },
+                          { case: { $eq: [{ $type: "$timestamp" }, "long"] }, then: { $toDate: "$timestamp" } },
+                          { case: { $eq: [{ $type: "$timestamp" }, "int"] }, then: { $toDate: "$timestamp" } },
+                          { case: { $eq: [{ $type: "$timestamp" }, "date"] }, then: "$timestamp" }
+                        ],
+                        default: new Date()
+                      }
+                    }
+                  }
+                },
+                // Apply date range filter after normalization
+                ...(from || to ? [{
+                  $match: {
+                    ...(from ? { timestamp: { $gte: new Date(from) } } : {}),
+                    ...(to ? { timestamp: { ...(from ? {} : {}), $lte: new Date(to) } } : {})
+                  }
+                }] : []),
+                {
+                  $project: {
+                    deviceId: 1,
+                    // Prefer 'value', then 'consumption', then 'production'
+                    readingValue: {
+                      $ifNull: [
+                        "$value",
+                        { $ifNull: ["$consumption", { $ifNull: ["$production", 0] }] }
+                      ]
+                    },
+                    timestamp: 1,
+                    period: { $dateToString: { format, date: "$timestamp" } }
+                  }
+                },
+                { $sort: { deviceId: 1, timestamp: 1 } },
+                {
+                  $group: {
+                    _id: { deviceId: "$deviceId", period: "$period" },
+                    first: { $first: "$readingValue" },
+                    last: { $last: "$readingValue" }
+                  }
+                },
+                {
+                  $project: {
+                    period: "$_id.period",
+                    deviceId: "$_id.deviceId",
+                    delta: { $subtract: ["$last", "$first"] }
+                  }
+                },
+                {
+                  $group: {
+                    _id: "$period",
+                    total: { $sum: "$delta" }
+                  }
+                },
+                { $sort: { _id: 1 } }
+              ];
+            }
     
             const result = await SensorModel.aggregate(pipeline);
     
@@ -988,11 +1253,13 @@ const router = express.Router();
         }
     
     
-        const merged = allResults.reduce((acc, item) => {
-            acc[item._id] = (acc[item._id] || 0) + item.total;
+                const merged = allResults.reduce((acc, item) => {
+            // Use validatedTotal for daily granularity, fallback to total for others
+            const value = granularity === 'day' ? (item.validatedTotal || item.total) : item.total;
+            acc[item._id] = (acc[item._id] || 0) + value;
             return acc;
         }, {});
-    
+
         const mergedArray = Object.entries(merged).map(([period, total]) => ({ period, total }));
     
     
@@ -1035,10 +1302,13 @@ const router = express.Router();
             const pipeline = [
             {
                 $match: {
-    
-                [field]: { $exists: true },
-                deviceId: { $exists: true }
-    
+                    deviceId: { $exists: true },
+                    $or: [
+                        { [field]: { $exists: true } },
+                        { value: { $exists: true } },
+                        { consumption: { $exists: true } },
+                        { production: { $exists: true } }
+                    ]
                 }
             },
             
@@ -1075,13 +1345,20 @@ const router = express.Router();
                 }
             },
             
+            { 
+                $project: {
+                    deviceId: 1,
+                    timestamp: 1,
+                    readingValue: {
+                        $ifNull: [ `$${field}`, { $ifNull: [ "$value", { $ifNull: [ "$consumption", { $ifNull: [ "$production", 0 ] } ] } ] } ]
+                    }
+                }
+            },
             { $sort: { deviceId: 1, timestamp: -1 } },
             {
                 $group: {
-                _id: "$deviceId",
-    
-                lastReading: { $first: `$${field}` }
-    
+                    _id: "$deviceId",
+                    lastReading: { $first: "$readingValue" }
                 }
             },
             {

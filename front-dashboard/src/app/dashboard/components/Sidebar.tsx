@@ -26,7 +26,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
   { name: 'Analytics', href: '/dashboard/analytics', icon: ChartBarIcon },
   { name: 'Notifications', href: '/dashboard/notifications', icon: BellIcon },
-  { name: 'Profile', href: '/dashboard/settings', icon: CogIcon },
+  { name: 'Profile', href: '/dashboard/profile', icon: CogIcon },
 ];
 
 // Icon URLs by type (same as on the map)
@@ -109,15 +109,35 @@ export default function Sidebar({ sites, onSidebarToggle, sidebarOpen = false, u
         
         {/* Header */}
         <div className="flex items-center justify-between h-14 sm:h-16 px-3 sm:px-4 border-b border-gray-200">
-          {!isCollapsed && (
-            <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate"></h1>
-              </div>
-            </div>
-          )}
-          
-          <div className="flex items-center gap-2">
+                {!isCollapsed && (
+                  <div className="flex items-center">
+                    <div className="flex-shrink-0">
+                      <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate"></h1>
+                    </div>
+                  </div>
+                )}
+                {filteredNavigation.length > 0 && (   
+                  <div className="flex items-center justify-between mb-3 sm:mb-4 px-2">
+                    {!isCollapsed && (
+                      <div className="min-w-0">
+                        <h1 className="text-sm sm:text-base font-semibold text-gray-900 truncate">Main Navigation</h1>
+                      </div>
+                    )}
+
+                    {/* Collapse toggle button - only show on desktop */}     
+                    <button
+                      onClick={toggleCollapse}
+                      className="hidden lg:flex p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+                    >
+                      {isCollapsed ? (
+                        <ChevronRightIcon className="w-4 h-4" />
+                      ) : (
+                        <ChevronLeftIcon className="w-4 h-4" />
+                      )}
+                    </button>
+                    </div>
+              )}
+          <div className="flex items-center justify-end gap-2">  
             {/* Mobile close button */}
             <button
               onClick={toggleSidebar}
@@ -132,26 +152,7 @@ export default function Sidebar({ sites, onSidebarToggle, sidebarOpen = false, u
           {/* Navigation */}
           <nav className="flex-1 px-2 py-4 sm:py-6 space-y-1 sm:space-y-2 overflow-y-auto">
             <div>
-              {filteredNavigation.length > 0 && (
-                <div className="flex items-center justify-between mb-3 sm:mb-4 px-2">
-                  {!isCollapsed && (
-                    <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                      Main Navigation
-                    </h3>
-                  )}
-                  {/* Collapse toggle button - only show on desktop */}
-                  <button
-                    onClick={toggleCollapse}
-                    className="hidden lg:flex p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-                  >
-                    {isCollapsed ? (
-                      <ChevronRightIcon className="w-4 h-4" />
-                    ) : (
-                      <ChevronLeftIcon className="w-4 h-4" />
-                    )}
-                  </button>
-                </div>
-              )}
+
               <div className="space-y-1">
                 {filteredNavigation.map((item) => {
                   const isActive = pathname === item.href;

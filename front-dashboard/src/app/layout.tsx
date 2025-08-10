@@ -6,8 +6,8 @@ import { authOptions } from './api/auth/[...nextauth]/route';
 import Providers from './providers';
 
 export const metadata = {
-  title: 'Dashboard App',
-  description: 'With login and layout',
+  title: 'DigiSmart Manager',
+  description: 'DigiSmart Manager',
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {

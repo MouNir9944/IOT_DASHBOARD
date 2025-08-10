@@ -11,6 +11,7 @@
     "monitor": "node monitor.js",
     "deploy-check": "node deployment-health-check.js",
     "diagnose": "node diagnose-server.js",
+    "create-notifications": "node create-sample-notifications.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
@@ -33,7 +34,9 @@
     "mongoose": "^8.0.3",
     "mqtt": "^5.14.0",
     "node-fetch": "^3.3.2",
-    "socket.io": "^4.8.1"
+    "nodemailer": "^6.9.7",
+    "socket.io": "^4.8.1",
+    "twilio": "^4.19.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

@@ -273,16 +273,11 @@ export default function SiteDetailPage() {
     const periodLabels = generatePeriodLabels(from, to, granularity);
     // Helper to fetch stats
     const fetchStats = async (type: string, setData: any, setLabels: any) => {
-      const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/${type}/stats`;
-      const body = JSON.stringify({
-        from,
-        to,
-        granularity
-      });
+      const qs = new URLSearchParams({ from, to, granularity }).toString();
+      const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/${type}/stats?${qs}`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body
+        headers: { 'Content-Type': 'application/json' }
       });
       if (!res.ok) { setData(Array(periodLabels.length).fill(0)); setLabels(periodLabels); return; }
       const data = await res.json();
@@ -292,7 +287,12 @@ export default function SiteDetailPage() {
         : data.values || [];
       console.log(`[fetchStats] type: ${type}, filled:`, filled);
       // Map period to value
-      const valueMap = new Map(filled.map((v: any) => [v.period, v.totalIndex ?? v.total ?? v.value ?? 0]));
+      const valueMap = new Map(
+        filled.map((v: any) => [
+          v.period,
+          (v.totalIndex ?? v.total ?? v.value ?? 0)
+        ])
+      );
       setData(periodLabels.map(label => valueMap.get(label) ?? 0));
       setLabels(periodLabels);
     };
@@ -1080,6 +1080,36 @@ export default function SiteDetailPage() {
         <div className="bg-white rounded-lg shadow p-4 sm:p-6 relative">
           <div className="flex justify-between items-center mb-4">
             <h3 className="text-lg font-semibold text-gray-900">Devices</h3>
+            <div className="flex gap-2">
+                          <button
+              onClick={() => router.push(`/dashboard/sites/${siteId}/devices/energy/energy`)}
+              className="bg-yellow-500 text-white px-3 py-1 rounded text-sm hover:bg-yellow-600 transition-colors flex items-center gap-1"
+            >
+              <BoltIcon className="w-4 h-4" />
+              Energy
+            </button>
+            <button
+              onClick={() => router.push(`/dashboard/sites/${siteId}/devices/solar/solar`)}
+              className="bg-orange-500 text-white px-3 py-1 rounded text-sm hover:bg-orange-600 transition-colors flex items-center gap-1"
+            >
+              <SunIcon className="w-4 h-4" />
+              Solar
+            </button>
+            <button
+              onClick={() => router.push(`/dashboard/sites/${siteId}/devices/water/water`)}
+              className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition-colors flex items-center gap-1"
+            >
+              <CloudIcon className="w-4 h-4" />
+              Water
+            </button>
+            <button
+              onClick={() => router.push(`/dashboard/sites/${siteId}/devices/gas/gas`)}
+              className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600 transition-colors flex items-center gap-1"
+            >
+              <FireIcon className="w-4 h-4" />
+              Gas
+            </button>
+            </div>
           </div>
           {/* Floating Plus Button for Add Device (only for canConfigure) */}
           {canConfigure && (
@@ -1103,7 +1133,7 @@ export default function SiteDetailPage() {
                     <div className="flex items-center justify-between w-full mb-2">
                       <h4 
                         className="font-medium text-gray-900 text-sm truncate cursor-pointer hover:text-blue-600"
-                        onClick={() => router.push(`/dashboard/sites/${siteId}/devices/${device.deviceId}`)}
+                        onClick={() => router.push(`/dashboard/sites/${siteId}/devices/${device.deviceId}/${device.type}`)}
                         title="Click to view device details"
                       >
                         {device.name}
@@ -1133,7 +1163,7 @@ export default function SiteDetailPage() {
                     </div>
                     <div className="mt-2 flex flex-col sm:flex-row gap-2 w-full">
                       <button
-                        onClick={() => router.push(`/dashboard/sites/${siteId}/devices/${device.deviceId}`)}   
+                        onClick={() => router.push(`/dashboard/sites/${siteId}/devices/${device.deviceId}/${device.type}`)}   
                         className="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600 transition-colors w-full"
                       >
                         View Details

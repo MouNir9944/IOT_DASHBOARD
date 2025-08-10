@@ -2,7 +2,7 @@
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 import { UserGroupIcon, PlusIcon } from '@heroicons/react/24/outline';
-
+  
 export default function AdminActions() {
   const { data: session, status } = useSession();
   const role = session?.user?.role;

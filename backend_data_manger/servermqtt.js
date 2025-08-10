@@ -197,6 +197,220 @@ app.get('/api/mqtt/status', (req, res) => {
   }
 });
 
+// Email endpoints removed: email sending has been disabled in data manager backend.
+
+// Test connection to main manager
+app.get('/api/test-main-manager', async (req, res) => {
+  try {
+    const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:5000';
+    console.log(`🔍 Testing connection to main manager at: ${mainManagerUrl}`);
+    
+    const response = await fetch(`${mainManagerUrl}/ping`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000
+    });
+    
+    if (response.ok) {
+      const data = await response.json().catch(() => ({}));
+      console.log('✅ Main manager connection test successful');
+      res.json({
+        success: true,
+        message: 'Main manager is reachable',
+        mainManagerUrl,
+        response: data
+      });
+    } else {
+      console.error(`❌ Main manager connection test failed: ${response.status} ${response.statusText}`);
+      res.status(500).json({
+        success: false,
+        message: `Main manager connection failed: ${response.status} ${response.statusText}`,
+        mainManagerUrl
+      });
+    }
+  } catch (error) {
+    console.error('❌ Main manager connection test error:', error.message);
+    res.status(500).json({
+      success: false,
+      message: `Main manager connection error: ${error.message}`,
+      mainManagerUrl: process.env.MAIN_MANAGER_URL || 'http://localhost:5000'
+    });
+  }
+});
+
+// Assign users to device alerts
+app.post('/api/devices/:deviceId/alerts/:alertId/assign-users', async (req, res) => {
+  try {
+    const { deviceId, alertId } = req.params;
+    const { userIds, groupIds, action } = req.body; // action: 'add' or 'remove'
+    
+    console.log(`🔧 Assigning users to alert: deviceId=${deviceId}, alertId=${alertId}, action=${action}`);
+    
+    // Connect to main database
+    const mainDB = mongoose.createConnection(process.env.MONGO_URI, {
+      dbName: 'iot_dashboard',
+      serverSelectionTimeoutMS: 30000
+    });
+
+    const Device = mainDB.model('Device', new mongoose.Schema({}, { strict: false }), 'devices');
+    
+    // Find the device
+    const device = await Device.findOne({ deviceId }).lean();
+    if (!device) {
+      await mainDB.close();
+      return res.status(404).json({
+        success: false,
+        message: 'Device not found'
+      });
+    }
+    
+    // Find the alert configuration
+    const alertConfig = device.alertConfigurations?.find(alert => alert.id === alertId);
+    if (!alertConfig) {
+      await mainDB.close();
+      return res.status(404).json({
+        success: false,
+        message: 'Alert configuration not found'
+      });
+    }
+    
+    // Initialize assignedUsers array if it doesn't exist
+    if (!alertConfig.assignedUsers) {
+      alertConfig.assignedUsers = [];
+    }
+    
+    // Initialize assignedGroups array if it doesn't exist
+    if (!alertConfig.assignedGroups) {
+      alertConfig.assignedGroups = [];
+    }
+    
+    if (action === 'add') {
+      // Add users
+      if (userIds && userIds.length > 0) {
+        for (const userId of userIds) {
+          if (!alertConfig.assignedUsers.includes(userId)) {
+            alertConfig.assignedUsers.push(userId);
+          }
+        }
+      }
+      
+      // Add groups
+      if (groupIds && groupIds.length > 0) {
+        for (const groupId of groupIds) {
+          if (!alertConfig.assignedGroups.includes(groupId)) {
+            alertConfig.assignedGroups.push(groupId);
+          }
+        }
+      }
+    } else if (action === 'remove') {
+      // Remove users
+      if (userIds && userIds.length > 0) {
+        alertConfig.assignedUsers = alertConfig.assignedUsers.filter(id => !userIds.includes(id));
+      }
+      
+      // Remove groups
+      if (groupIds && groupIds.length > 0) {
+        alertConfig.assignedGroups = alertConfig.assignedGroups.filter(id => !groupIds.includes(id));
+      }
+    }
+    
+    // Update the device
+    await Device.findOneAndUpdate(
+      { deviceId },
+      { $set: { alertConfigurations: device.alertConfigurations } }
+    );
+    
+    await mainDB.close();
+    
+    console.log(`✅ Successfully ${action}ed users/groups to alert ${alertId}`);
+    
+    res.json({
+      success: true,
+      message: `Successfully ${action}ed users/groups to alert`,
+      alertConfig: {
+        id: alertConfig.id,
+        title: alertConfig.title,
+        assignedUsers: alertConfig.assignedUsers,
+        assignedGroups: alertConfig.assignedGroups
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error assigning users to alert:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to assign users to alert',
+      error: error.message
+    });
+  }
+});
+
+// Get users and groups for assignment
+app.get('/api/users-groups', async (req, res) => {
+  try {
+    const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:5000';
+    
+    // Fetch users
+    const usersResponse = await fetch(`${mainManagerUrl}/api/users`, {
+      method: 'GET',
+      headers: { 
+        'Content-Type': 'application/json',
+        'User-Agent': 'DataManager/1.0'
+      },
+      timeout: 10000
+    });
+    
+    let users = [];
+    if (usersResponse.ok) {
+      users = await usersResponse.json();
+    }
+    
+    // Fetch groups (if groups API exists)
+    let groups = [];
+    try {
+      const groupsResponse = await fetch(`${mainManagerUrl}/api/groups`, {
+        method: 'GET',
+        headers: { 
+          'Content-Type': 'application/json',
+          'User-Agent': 'DataManager/1.0'
+        },
+        timeout: 10000
+      });
+      
+      if (groupsResponse.ok) {
+        groups = await groupsResponse.json();
+      }
+    } catch (error) {
+      console.log('⚠️ Groups API not available, using empty groups array');
+    }
+    
+    res.json({
+      success: true,
+      users: users.map(user => ({
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        role: user.role
+      })),
+      groups: groups.map(group => ({
+        id: group._id,
+        name: group.name,
+        description: group.description
+      }))
+    });
+    
+  } catch (error) {
+    console.error('❌ Error fetching users and groups:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch users and groups',
+      error: error.message
+    });
+  }
+});
+
 // Reinitialize MQTT client (called when devices are added/removed)
 app.post('/api/mqtt/reinitialize', async (req, res) => {
   try {
@@ -229,6 +443,8 @@ mainDB.once('connected', () => {
     console.log(`   POST /api/mqtt/reinitialize - Reinitialize MQTT subscriptions`);
     console.log(`   POST /api/site/:siteId/:type/index - Get site-specific data index`);
     console.log(`   POST /api/global/:type/index - Get global data index`);
+    console.log(`   GET  /api/users-groups - Get users and groups for assignment`);
+    console.log(`   POST /api/devices/:deviceId/alerts/:alertId/assign-users - Assign users/groups to alerts`);
   });
 });
 

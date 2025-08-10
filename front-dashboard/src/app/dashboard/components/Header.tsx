@@ -1,13 +1,21 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { signOut } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
 import { 
   BellIcon,
   UserCircleIcon,
   ArrowRightOnRectangleIcon,
-  Bars3Icon
+  Bars3Icon,
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  ExclamationCircleIcon,
+  InformationCircleIcon,
+  BuildingOfficeIcon,
+  DevicePhoneMobileIcon
 } from '@heroicons/react/24/outline';
+import Logo from './Logo';
 
 interface User {
   name?: string | null;
@@ -15,41 +23,233 @@ interface User {
   role?: string;
 }
 
+interface NotificationMeta {
+  siteName?: string;
+  deviceName?: string;
+  parameter?: string;
+  currentValue?: number | string;
+  comparisonValue?: number | string;
+  dailyConsumption?: number | string;
+  threshold?: number | string;
+  condition?: string;
+  unit?: string;
+  deviceType?: string;
+}
+
+interface Notification {
+  _id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error' | 'critical';
+  status: 'new' | 'read' | 'acknowledged' | 'resolved';
+  createdAt: string;
+  siteId?: { _id: string; name: string };
+  deviceId?: string;
+  metadata?: NotificationMeta;
+}
+
 interface HeaderProps {
   user: User;
   onSidebarToggle?: () => void;
 }
 
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+
 export default function Header({ user, onSidebarToggle }: HeaderProps) {
+  const router = useRouter();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [notificationCount, setNotificationCount] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const eventSourceRef = useRef<EventSource | null>(null);
 
-  const notifications = [
-    {
-      id: 1,
-      title: 'High Energy Consumption',
-      message: 'Energy usage is 20% above normal levels',
-      time: '2 minutes ago',
-      type: 'warning'
-    },
-    {
-      id: 2,
-      title: 'Solar Panel Alert',
-      message: 'Solar production efficiency increased by 15%',
-      time: '5 minutes ago',
-      type: 'success'
-    },
-    {
-      id: 3,
-      title: 'Water Leak Detected',
-      message: 'Potential water leak detected in Zone A',
-      time: '10 minutes ago',
-      type: 'error'
+  const fetchNotifications = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`${API_URL}/api/notifications?status=new&limit=5`);
+      if (response.ok) {
+        const data = await response.json();
+        setNotifications(data.notifications);
+      }
+    } catch (error) {
+      console.error('Failed to fetch notifications:', error);
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
+
+  const fetchNotificationCount = async () => {
+    try {
+      const response = await fetch(`${API_URL}/api/notifications/count`);
+      if (response.ok) {
+        const data = await response.json();
+        setNotificationCount(data.new);
+        console.log('📊 Fetched notification count:', data.new);
+      }
+    } catch (error) {
+      console.error('Failed to fetch notification count:', error);
+    }
+  };
+
+  // Function to refresh notifications and count
+  const refreshNotifications = async () => {
+    await fetchNotifications();
+    await fetchNotificationCount();
+  };
+
+  // Function to handle notification status changes
+  const handleNotificationStatusChange = async (notificationId: string, newStatus: string) => {
+    try {
+      const response = await fetch(`${API_URL}/api/notifications/${notificationId}/${newStatus}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        // Refresh notifications and count after status change
+        await refreshNotifications();
+        console.log(`✅ Notification ${notificationId} marked as ${newStatus}`);
+      }
+    } catch (error) {
+      console.error(`Failed to update notification status:`, error);
+    }
+  };
+
+  //
+
+  // Initialize Server-Sent Events for real-time notifications
+  const initializeSSE = () => {
+    try {
+      // Close existing connection if any
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+
+      // Create new SSE connection
+      eventSourceRef.current = new EventSource(`${API_URL}/api/notifications/stream`);
+      
+      eventSourceRef.current.onopen = () => {
+        console.log('🔌 SSE connection established for notifications');
+      };
+
+      eventSourceRef.current.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('📢 Received SSE notification update:', data);
+          
+          if (data.type === 'notification_created') {
+            // Refresh to fetch full details (site/device/metadata)
+            refreshNotifications();
+            // Optimistically update count
+            setNotificationCount(prev => prev + 1);
+            
+            // Show browser notification if permission granted
+            if (Notification.permission === 'granted') {
+              new Notification(data.notification.title, {
+                body: data.notification.message,
+                icon: '/favicon.ico'
+              });
+            }
+          } else if (data.type === 'notification_count_update') {
+            // Update count with the actual count from server
+            setNotificationCount(data.count);
+            console.log('📊 Updated notification count:', data.count);
+          } else if (data.type === 'connected') {
+            console.log('🔌 SSE connected:', data.message);
+          } else if (data.type === 'heartbeat') {
+            // Handle heartbeat - connection is alive
+            console.log('💓 SSE heartbeat received');
+          }
+        } catch (error) {
+          console.error('Error parsing SSE message:', error);
+        }
+      };
+
+      eventSourceRef.current.onerror = (error) => {
+        console.error('SSE connection error:', error);
+        // Reconnect after 5 seconds
+        setTimeout(() => {
+          console.log('🔄 Reconnecting SSE...');
+          initializeSSE();
+        }, 5000);
+      };
+
+    } catch (error) {
+      console.error('Failed to initialize SSE:', error);
+    }
+  };
+
+  // Request notification permission
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      const permission = await Notification.requestPermission();
+      console.log('Notification permission:', permission);
+    }
+  };
+
+  useEffect(() => {
+    // Initial fetch
+    refreshNotifications();
+    
+    // Initialize SSE for real-time updates
+    initializeSSE();
+    
+    // Request notification permission
+    requestNotificationPermission();
+    
+    // Fallback polling every 30 seconds (in case SSE fails)
+    const interval = setInterval(() => {
+      refreshNotifications();
+    }, 30000);
+    
+    return () => {
+      clearInterval(interval);
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
+  }, []);
 
   const handleLogout = async () => {
     await signOut({ callbackUrl: '/login' });
+  };
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'success':
+        return <CheckCircleIcon className="w-4 h-4 text-green-500" />;
+      case 'warning':
+        return <ExclamationTriangleIcon className="w-4 h-4 text-yellow-500" />;
+      case 'error':
+      case 'critical':
+        return <ExclamationCircleIcon className="w-4 h-4 text-red-500" />;
+      default:
+        return <InformationCircleIcon className="w-4 h-4 text-blue-500" />;
+    }
+  };
+
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+    
+    if (diffInMinutes < 1) return 'Just now';
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
+    return date.toLocaleDateString();
+  };
+
+  const formatDateTime = (dateString: string) => {
+    return new Date(dateString).toLocaleString();
+  };
+
+  // Format numbers to 3 decimals when numeric
+  const formatNumber = (val: unknown) => {
+    const num = Number(val as any);
+    return Number.isFinite(num) ? num.toFixed(3) : String(val ?? '');
   };
 
   return (
@@ -64,10 +264,12 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
           >
             <Bars3Icon className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
-          
-          <div className="flex-1 min-w-0">
-            <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 truncate">Dashboard</h1>
-            <p className="text-xs sm:text-sm text-gray-600 truncate">Welcome back, {user.name || user.email}</p>
+                     <Logo size="lg" className="text-blue-600" />
+            <div className="flex-1 min-w-0">
+            <div className="flex flex-col items-start gap-2">
+              <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 truncate">DigiSmart Manager</h1>
+              <p className="text-xs sm:text-sm text-gray-600 truncate">Welcome back, {user.name || user.email}</p>
+            </div>
           </div>
         </div>
 
@@ -80,10 +282,14 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
               className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
             >
               <BellIcon className="w-5 h-5 sm:w-6 sm:h-6" />
-              <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center">
-                {notifications.length}
-              </span>
+              {notificationCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center animate-pulse">
+                  {notificationCount > 99 ? '99+' : notificationCount}
+                </span>
+              )}
             </button>
+
+            
 
             {/* Notifications Dropdown */}
             {showNotifications && (
@@ -92,33 +298,95 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
                   <h3 className="text-base sm:text-lg font-semibold text-gray-900">Notifications</h3>
                 </div>
                 <div className="max-h-64 sm:max-h-96 overflow-y-auto">
-                  {notifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`p-3 sm:p-4 border-b border-gray-100 hover:bg-gray-50 ${
-                        notification.type === 'error' ? 'border-l-4 border-l-red-500' :
-                        notification.type === 'warning' ? 'border-l-4 border-l-yellow-500' :
-                        'border-l-4 border-l-green-500'
-                      }`}
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <h4 className="text-xs sm:text-sm font-medium text-gray-900 truncate">
-                            {notification.title}
-                          </h4>
-                          <p className="text-xs sm:text-sm text-gray-600 mt-1 line-clamp-2">
-                            {notification.message}
-                          </p>
-                          <p className="text-xs text-gray-500 mt-2">
-                            {notification.time}
-                          </p>
+                  {loading ? (
+                    <div className="p-4 text-center">
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
+                      <p className="mt-2 text-sm text-gray-600">Loading...</p>
+                    </div>
+                  ) : notifications.length === 0 ? (
+                    <div className="p-4 text-center">
+                      <BellIcon className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                      <p className="text-sm text-gray-600">No new notifications</p>
+                    </div>
+                  ) : (
+                    notifications.map((notification) => {
+                      const siteName = notification.metadata?.siteName || notification.siteId?.name;
+                      const deviceName = notification.metadata?.deviceName || notification.deviceId;
+                      const parameter = notification.metadata?.parameter;
+                      const unit = notification.metadata?.unit ? ` ${notification.metadata.unit}` : '';
+                      const isConsumption = String(parameter || '').toLowerCase() === 'consumption';
+                      const value = isConsumption
+                        ? (notification.metadata?.dailyConsumption ?? notification.metadata?.comparisonValue ?? notification.metadata?.currentValue)
+                        : (notification.metadata?.currentValue ?? notification.metadata?.comparisonValue);
+                      const valueLabel = isConsumption ? 'Daily Consumption' : (parameter ? 'Current Value' : 'Value');
+                      const formattedValue = value !== undefined ? formatNumber(value) : undefined;
+                      const threshold = notification.metadata?.threshold;
+                      const formattedThreshold = threshold !== undefined ? formatNumber(threshold) : undefined;
+                      const condition = notification.metadata?.condition?.toUpperCase();
+                      return (
+                      <div
+                        key={notification._id}
+                        className={`p-3 sm:p-4 border-b border-gray-100 hover:bg-gray-50 ${
+                          notification.type === 'error' || notification.type === 'critical' ? 'border-l-4 border-l-red-500' :
+                          notification.type === 'warning' ? 'border-l-4 border-l-yellow-500' :
+                          notification.type === 'success' ? 'border-l-4 border-l-green-500' :
+                          'border-l-4 border-l-blue-500'
+                        }`}
+                      >
+                        <div className="flex items-start space-x-3">
+                          <div className="flex-shrink-0 mt-0.5">
+                            {getTypeIcon(notification.type)}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="text-xs sm:text-sm font-medium text-gray-900 truncate">
+                              {notification.title}
+                            </h4>
+                            <p className="text-xs sm:text-sm text-gray-600 mt-1 line-clamp-2">
+                              {notification.message}
+                            </p>
+                            {(siteName || deviceName) && (
+                              <div className="mt-2 flex items-center gap-3 text-[11px] sm:text-xs text-gray-600">
+                                {siteName && (
+                                  <span className="inline-flex items-center gap-1">
+                                    <BuildingOfficeIcon className="w-3 h-3" /> {siteName}
+                                  </span>
+                                )}
+                                {deviceName && (
+                                  <span className="inline-flex items-center gap-1">
+                                    <DevicePhoneMobileIcon className="w-3 h-3" /> {deviceName}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                              {(parameter || value !== undefined || threshold !== undefined) && (
+                              <div className="mt-1 text-[11px] sm:text-xs text-gray-700">
+                                {parameter && (
+                                  <span className="font-medium">{isConsumption ? 'Daily Consumption' : parameter}:</span>
+                                )} {formattedValue !== undefined ? `${formattedValue}${unit}` : ''}
+                                {threshold !== undefined && (
+                                    <span className="ml-2 text-gray-500">({condition || ''} {formattedThreshold}{unit})</span>
+                                )}
+                              </div>
+                            )}
+                            <p className="text-xs text-gray-500 mt-2" title={formatDateTime(notification.createdAt)}>
+                              {formatTime(notification.createdAt)} • {formatDateTime(notification.createdAt)}
+                            </p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                      );
+                    })
+                  )}
                 </div>
                 <div className="p-3 sm:p-4 border-t border-gray-200">
-                  <button className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 font-medium">
+                  <button 
+                    onClick={() => {
+                      setShowNotifications(false);
+                      // Navigate to notifications page using Next.js router
+                      router.push('/dashboard/notifications');
+                    }}
+                    className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 font-medium"
+                  >
                     View all notifications
                   </button>
                 </div>

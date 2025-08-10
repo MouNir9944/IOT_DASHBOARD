@@ -41,7 +41,8 @@ async function fetchGlobalStats({
   const res = await fetch(`${DATA_API_URL}/global/${type}/stats`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ siteIds})
+    // Pass the selected window and granularity so backend aggregates correctly
+    body: JSON.stringify({ siteIds, from, to, granularity })
   });
   if (!res.ok) throw new Error('Failed to fetch global stats');
   return res.json();

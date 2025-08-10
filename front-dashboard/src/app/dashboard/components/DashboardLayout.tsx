@@ -1,9 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '../../api/auth/[...nextauth]/route';
-import { redirect } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Sidebar from './Sidebar';
 import Header from './Header';
@@ -19,7 +16,7 @@ interface DashboardLayoutProps {
   user: User;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites'; // TODO: change to /api/sites/user/{userId}
+const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL ? process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites' : undefined; // TODO: change to /api/sites/user/{userId}
 
 export default function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const [sites, setSites] = useState<any[]>([]);
@@ -31,35 +28,46 @@ export default function DashboardLayout({ children, user }: DashboardLayoutProps
   };
 
   useEffect(() => {
-    if (!session?.user) return;
+    if (!session?.user || !API_URL) return;
+    
     const fetchSites = async () => {
-      let url = API_URL;
-      
-      // Add query parameters for filtering
-      const params = new URLSearchParams();
-      if (session.user.role) {
-        params.append('role', session.user.role);
-      }
-      if (session.user.role === 'admin' && session.user.id) {
-        params.append('createdBy', session.user.id);
-      }
-      
-      if (params.toString()) {
-        url += `?${params.toString()}`;
-      }
-      
-      const res = await fetch(url);
-      const data = await res.json();
-      
-      if (data.error) {
-        console.error('Error fetching sites:', data);
+      try {
+        let url = API_URL;
+        
+        // Add query parameters for filtering
+        const params = new URLSearchParams();
+        if (session.user.role) {
+          params.append('role', session.user.role);
+        }
+        if (session.user.role === 'admin' && session.user.id) {
+          params.append('createdBy', session.user.id);
+        }
+        
+        if (params.toString()) {
+          url += `?${params.toString()}`;
+        }
+        
+        const res = await fetch(url);
+        if (!res.ok) {
+          throw new Error(`Failed to fetch sites: ${res.status}`);
+        }
+        
+        const data = await res.json();
+        
+        if (data.error) {
+          console.error('Error fetching sites:', data);
+          setSites([]);
+        } else {
+          setSites(Array.isArray(data) ? data : []);
+        }
+      } catch (error) {
+        console.error('Error fetching sites:', error);
         setSites([]);
-      } else {
-        setSites(Array.isArray(data) ? data : []);
       }
     };
+    
     fetchSites();
-  }, [session]);
+  }, [session, API_URL]);
 
   return (
     <div className="min-h-screen flex flex-col bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">

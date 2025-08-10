@@ -15,6 +15,7 @@ import sitesRoutes from './routes/sites.js';
 import usersRoutes from './routes/users.js';
 import dataRoutes from './routes/data.js';
 import deviceRoutes from './routes/device.js';
+import notificationRoutes from './routes/notifications.js';
 
 // Load environment variables
 dotenv.config();
@@ -37,14 +38,20 @@ const io = new Server(server, {
   pingInterval: 25000
 });
 
-// WebSocket connection handling
+// WebSocket connection handling with improved cleanup
 io.on('connection', (socket) => {
   console.log('🔌 WebSocket client connected:', socket.id);
   
   // Initialize client subscriptions tracking
   clientSubscriptions.set(socket.id, new Set());
   
-  // Handle device subscription
+  // Set a timeout for client inactivity
+  const clientTimeout = setTimeout(() => {
+    console.log(`⏰ Client ${socket.id} inactive for too long, disconnecting...`);
+    socket.disconnect(true);
+  }, 300000); // 5 minutes timeout
+  
+  // Handle device subscription with timeout protection
   socket.on('subscribe-device', (deviceId) => {
     try {
       console.log(`📡 Client ${socket.id} subscribing to device: ${deviceId}`);
@@ -74,7 +81,7 @@ io.on('connection', (socket) => {
     }
   });
   
-  // Handle device unsubscription
+  // Handle device unsubscription with timeout protection
   socket.on('unsubscribe-device', (deviceId) => {
     try {
       console.log(`📡 Client ${socket.id} unsubscribing from device: ${deviceId}`);
@@ -99,7 +106,10 @@ io.on('connection', (socket) => {
       
       // If no other clients are subscribed, unsubscribe from MQTT topic
       if (!otherClientsSubscribed) {
-        unsubscribeFromDevice(deviceId);
+        // Use setTimeout to prevent blocking the event loop
+        setTimeout(() => {
+          unsubscribeFromDevice(deviceId);
+        }, 100);
         console.log(`📡 No other clients subscribed to ${deviceId}, unsubscribing from MQTT topic`);
       }
     } catch (error) {
@@ -107,8 +117,12 @@ io.on('connection', (socket) => {
     }
   });
   
-  socket.on('disconnect', () => {
-    console.log('🔌 WebSocket client disconnected:', socket.id);
+  // Handle client disconnect with improved cleanup
+  socket.on('disconnect', (reason) => {
+    console.log(`🔌 WebSocket client disconnected: ${socket.id}, reason: ${reason}`);
+    
+    // Clear the client timeout
+    clearTimeout(clientTimeout);
     
     try {
       // Get all devices this client was subscribed to
@@ -116,22 +130,25 @@ io.on('connection', (socket) => {
       if (clientDevices) {
         console.log(`📡 Client ${socket.id} was subscribed to devices:`, Array.from(clientDevices));
         
-        // Check each device to see if we should unsubscribe from MQTT
-        clientDevices.forEach(deviceId => {
-          let otherClientsSubscribed = false;
-          for (const [clientId, devices] of clientSubscriptions.entries()) {
-            if (clientId !== socket.id && devices.has(deviceId)) {
-              otherClientsSubscribed = true;
-              break;
+        // Use setTimeout to prevent blocking the event loop during cleanup
+        setTimeout(() => {
+          // Check each device to see if we should unsubscribe from MQTT
+          clientDevices.forEach(deviceId => {
+            let otherClientsSubscribed = false;
+            for (const [clientId, devices] of clientSubscriptions.entries()) {
+              if (clientId !== socket.id && devices.has(deviceId)) {
+                otherClientsSubscribed = true;
+                break;
+              }
             }
-          }
-          
-          // If no other clients are subscribed, unsubscribe from MQTT topic
-          if (!otherClientsSubscribed) {
-            unsubscribeFromDevice(deviceId);
-            console.log(`📡 No other clients subscribed to ${deviceId}, unsubscribing from MQTT topic`);
-          }
-        });
+            
+            // If no other clients are subscribed, unsubscribe from MQTT topic
+            if (!otherClientsSubscribed) {
+              unsubscribeFromDevice(deviceId);
+              console.log(`📡 No other clients subscribed to ${deviceId}, unsubscribing from MQTT topic`);
+            }
+          });
+        }, 100);
       }
       
       // Clean up client subscriptions
@@ -140,6 +157,11 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error('❌ Error in socket disconnect cleanup:', error.message);
     }
+  });
+  
+  // Handle client errors
+  socket.on('error', (error) => {
+    console.error(`❌ WebSocket client error for ${socket.id}:`, error.message);
   });
 });
 
@@ -157,17 +179,101 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Rate limiting
+// Rate limiting - exclude SSE endpoints, frequently called notification endpoints, sites endpoint, devices endpoint, and data endpoints
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
+  message: 'Too many requests from this IP, please try again later.',
+  skip: (req) => {
+    // Skip rate limiting for SSE endpoints, frequently called notification endpoints, sites endpoint, devices endpoint, and data endpoints
+    const shouldSkip = req.path.startsWith('/api/notifications/stream') || 
+           req.path.startsWith('/api/notifications/sse') ||
+           req.path === '/api/notifications/count' ||
+           req.path === '/api/notifications/email-status' ||
+           req.path.startsWith('/api/notifications/test-') ||
+           req.path === '/api/sites' ||
+           req.path.startsWith('/api/sites/') ||
+           req.path === '/api/devices' ||
+           req.path.startsWith('/api/data/site/');
+    
+    if (shouldSkip) {
+      console.log(`🚫 Main limiter skipped for: ${req.path}`);
+    }
+    
+    return shouldSkip;
+  },
+  handler: (req, res) => {
+    console.log(`🚫 Main rate limit exceeded for IP: ${req.ip}, Path: ${req.path}`);
+    res.status(429).json({
+      error: 'Too many requests from this IP, please try again later.',
+      path: req.path,
+      ip: req.ip,
+      retryAfter: Math.ceil(15 * 60 / 60) // minutes
+    });
+  }
 });
+
+// Apply the main rate limiter
 app.use(limiter);
+
+// Special rate limiter for notification endpoints with higher limits
+// Note: This limiter is applied globally but skips sites, devices, and data endpoints
+// to avoid interfering with the main limiter's exclusions
+const notificationLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 300, // 300 requests per minute for notification endpoints
+  message: 'Too many notification requests from this IP, please try again later.',
+  skip: (req) => {
+    // Skip rate limiting for frequently called notification endpoints, sites, devices, and data endpoints
+    const shouldSkip = req.path === '/api/notifications/count' ||
+           req.path === '/api/notifications/email-status' ||
+           req.path.startsWith('/api/notifications/test-') ||
+           req.path.startsWith('/api/notifications/stream') ||
+           req.path.startsWith('/api/notifications/sse') ||
+           req.path === '/api/sites' ||
+           req.path.startsWith('/api/sites/') ||
+           req.path === '/api/devices' ||
+           req.path.startsWith('/api/data/site/');
+    
+    if (shouldSkip) {
+      console.log(`🚫 Notification rate limiting skipped for: ${req.path}`);
+    }
+    
+    return shouldSkip;
+  },
+  handler: (req, res) => {
+    console.log(`🚫 Notification rate limit exceeded for IP: ${req.ip}, Path: ${req.path}`);
+    res.status(429).json({
+      error: 'Too many notification requests from this IP, please try again later.',
+      path: req.path,
+      ip: req.ip,
+      retryAfter: Math.ceil(1) // 1 minute
+    });
+  }
+});
+
+// Apply notification rate limiter after the main limiter
+app.use(notificationLimiter);
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Request timeout middleware to prevent hanging requests
+app.use((req, res, next) => {
+  const timeout = setTimeout(() => {
+    console.warn(`⏰ Request timeout for ${req.method} ${req.path}`);
+    if (!res.headersSent) {
+      res.status(408).json({ error: 'Request timeout' });
+    }
+  }, 30000); // 30 second timeout
+  
+  res.on('finish', () => {
+    clearTimeout(timeout);
+  });
+  
+  next();
+});
 
 // Database connection
 const connectDB = async () => {
@@ -206,40 +312,97 @@ let activeSubscriptions = new Set(); // Track active MQTT subscriptions
 let clientSubscriptions = new Map(); // Track which clients are subscribed to which devices
 let mqttReconnectAttempts = 0;
 const MAX_MQTT_RECONNECT_ATTEMPTS = 10;
+let mqttConnectionTimeout = null;
+let mqttReconnectTimer = null;
 
-// MQTT connection function
-function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
+// MQTT connection function with improved error handling
+function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL) {
   console.log('🚀 Connecting to MQTT broker:', brokerUrl);
+  
+  // Clear any existing timers
+  if (mqttConnectionTimeout) {
+    clearTimeout(mqttConnectionTimeout);
+    mqttConnectionTimeout = null;
+  }
+  if (mqttReconnectTimer) {
+    clearTimeout(mqttReconnectTimer);
+    mqttReconnectTimer = null;
+  }
   
   // Clean up existing client if it exists
   if (mqttClient) {
-    mqttClient.removeAllListeners();
-    mqttClient.end(true);
+    try {
+      mqttClient.removeAllListeners();
+      mqttClient.end(true, () => {
+        console.log('🔌 Previous MQTT client cleaned up');
+      });
+    } catch (error) {
+      console.log('⚠️ Error cleaning up previous MQTT client:', error.message);
+    }
   }
   
   mqttClient = mqtt.connect(brokerUrl, {
     clientId: `iot_dashboard_main_${Date.now()}`,
     clean: true,
     connectTimeout: 30000,
-    reconnectPeriod: 5000,
+    reconnectPeriod: 0, // Disable automatic reconnection, we'll handle it manually
     keepalive: 60,
-    reschedulePings: true
+    reschedulePings: true,
+    rejectUnauthorized: false // Add this for better connection stability
   });
+
+  // Set connection timeout
+  mqttConnectionTimeout = setTimeout(() => {
+    if (mqttClient && !mqttClient.connected) {
+      console.log('⏰ MQTT connection timeout, retrying...');
+      mqttClient.end(true);
+      scheduleMQTTReconnect();
+    }
+  }, 35000); // 35 seconds (longer than connectTimeout)
 
   mqttClient.on('connect', () => {
     console.log('✅ Connected to MQTT broker');
     console.log('📡 MQTT client ready for dynamic subscriptions');
     mqttReconnectAttempts = 0; // Reset reconnect attempts on successful connection
+    
+    // Clear connection timeout
+    if (mqttConnectionTimeout) {
+      clearTimeout(mqttConnectionTimeout);
+      mqttConnectionTimeout = null;
+    }
+    
+    // Resubscribe to active topics after reconnection
+    if (activeSubscriptions.size > 0) {
+      console.log(`🔄 Resubscribing to ${activeSubscriptions.size} topics after reconnection...`);
+      activeSubscriptions.forEach(topic => {
+        mqttClient.subscribe(topic, (err) => {
+          if (err) {
+            console.error(`❌ Failed to resubscribe to "${topic}":`, err.message);
+          } else {
+            console.log(`📡 Resubscribed to topic: ${topic}`);
+          }
+        });
+      });
+    }
   });
 
   mqttClient.on('error', err => {
     console.error('❌ MQTT connection error:', err.message);
     mqttReconnectAttempts++;
     
+    // Clear connection timeout on error
+    if (mqttConnectionTimeout) {
+      clearTimeout(mqttConnectionTimeout);
+      mqttConnectionTimeout = null;
+    }
+    
     if (mqttReconnectAttempts >= MAX_MQTT_RECONNECT_ATTEMPTS) {
       console.error('❌ Max MQTT reconnection attempts reached, stopping reconnection');
       return;
     }
+    
+    // Schedule reconnection with exponential backoff
+    scheduleMQTTReconnect();
   });
 
   mqttClient.on('reconnect', () => {
@@ -249,6 +412,21 @@ function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
 
   mqttClient.on('close', () => {
     console.log('🔌 MQTT connection closed');
+    
+    // Clear connection timeout
+    if (mqttConnectionTimeout) {
+      clearTimeout(mqttConnectionTimeout);
+      mqttConnectionTimeout = null;
+    }
+    
+    // Schedule reconnection if we haven't reached max attempts
+    if (mqttReconnectAttempts < MAX_MQTT_RECONNECT_ATTEMPTS) {
+      scheduleMQTTReconnect();
+    }
+  });
+
+  mqttClient.on('offline', () => {
+    console.log('📴 MQTT client went offline');
   });
 
   mqttClient.on('message', async (topic, messageBuffer) => {
@@ -290,6 +468,24 @@ function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
       console.error('❌ Failed to process MQTT message:', err.message);
     }
   });
+}
+
+// Schedule MQTT reconnection with exponential backoff
+function scheduleMQTTReconnect() {
+  if (mqttReconnectTimer) {
+    clearTimeout(mqttReconnectTimer);
+  }
+  
+  const delay = Math.min(1000 * Math.pow(2, mqttReconnectAttempts), 30000); // Max 30 seconds
+  
+  console.log(`🔄 Scheduling MQTT reconnection in ${delay}ms (attempt ${mqttReconnectAttempts + 1})`);
+  
+  mqttReconnectTimer = setTimeout(() => {
+    if (mqttReconnectAttempts < MAX_MQTT_RECONNECT_ATTEMPTS) {
+      console.log('🔄 Attempting MQTT reconnection...');
+      connectMQTT();
+    }
+  }, delay);
 }
 
 // Function to build device map (no automatic subscriptions)
@@ -373,11 +569,19 @@ function subscribeToDevice(deviceId) {
   return true;
 }
 
-// Helper function to unsubscribe from a device topic
+// Helper function to unsubscribe from a device topic with improved error handling
 function unsubscribeFromDevice(deviceId) {
   try {
-    if (!mqttClient || !mqttClient.connected) {
-      console.warn('⚠️ MQTT client not connected, cannot unsubscribe from device:', deviceId);
+    if (!mqttClient) {
+      console.log(`⚠️ MQTT client not available, cannot unsubscribe from device: ${deviceId}`);
+      return false;
+    }
+
+    if (!mqttClient.connected) {
+      console.log(`⚠️ MQTT client not connected, cannot unsubscribe from device: ${deviceId}`);
+      // Remove from active subscriptions even if not connected
+      const topic = `device/${deviceId}/data`;
+      activeSubscriptions.delete(topic);
       return false;
     }
 
@@ -390,7 +594,16 @@ function unsubscribeFromDevice(deviceId) {
 
     console.log(`🔄 Attempting to unsubscribe from MQTT topic: ${topic}`);
     
+    // Set a timeout for the unsubscribe operation
+    const unsubscribeTimeout = setTimeout(() => {
+      console.warn(`⏰ Unsubscribe timeout for topic: ${topic}, forcing cleanup`);
+      activeSubscriptions.delete(topic);
+    }, 5000); // 5 second timeout
+    
     mqttClient.unsubscribe(topic, (err) => {
+      // Clear the timeout
+      clearTimeout(unsubscribeTimeout);
+      
       if (err) {
         console.error(`❌ Failed to unsubscribe from topic "${topic}":`, err.message);
         // Don't remove from activeSubscriptions on error to allow retry
@@ -408,6 +621,9 @@ function unsubscribeFromDevice(deviceId) {
     return true;
   } catch (error) {
     console.error(`❌ Exception during unsubscribe from device ${deviceId}:`, error.message);
+    // Force cleanup on exception
+    const topic = `device/${deviceId}/data`;
+    activeSubscriptions.delete(topic);
     return false;
   }
 }
@@ -444,6 +660,7 @@ app.use('/api/sites', sitesRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/data', dataRoutes);
 app.use('/api/device', deviceRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
@@ -472,7 +689,7 @@ app.get('/ping', (req, res) => {
 });
 
 // Health check endpoint for monitoring services
-app.get('/health', (req, res) => {
+app.get('/health', async (req, res) => {
   const health = {
     status: 'healthy',
     timestamp: new Date().toISOString(),
@@ -484,6 +701,28 @@ app.get('/health', (req, res) => {
     connectedClients: clientSubscriptions.size
   };
   
+  // Check email configuration
+  try {
+    const NotificationService = await import('./services/notificationService.js');
+    const notificationService = new NotificationService.default();
+    health.emailConfigured = !!notificationService.emailTransporter;
+    
+    if (notificationService.emailTransporter) {
+      try {
+        await notificationService.emailTransporter.verify();
+        health.emailStatus = 'verified';
+      } catch (error) {
+        health.emailStatus = 'verification_failed';
+        health.emailError = error.message;
+      }
+    } else {
+      health.emailStatus = 'not_configured';
+    }
+  } catch (error) {
+    health.emailStatus = 'error';
+    health.emailError = error.message;
+  }
+  
   // Return 503 if MQTT is not connected
   if (!mqttClient || !mqttClient.connected) {
     health.status = 'degraded';
@@ -492,6 +731,39 @@ app.get('/health', (req, res) => {
   
   const statusCode = health.status === 'healthy' ? 200 : 503;
   res.status(statusCode).json(health);
+});
+
+// Rate limit status endpoint for debugging
+app.get('/api/rate-limit-status', (req, res) => {
+  res.json({
+    message: 'Rate limit status endpoint',
+    timestamp: new Date().toISOString(),
+    rateLimitInfo: {
+      mainLimiter: {
+        windowMs: '15 minutes',
+        max: 100,
+        description: 'General API rate limit'
+      },
+      notificationLimiter: {
+        windowMs: '1 minute',
+        max: 300,
+        description: 'Notification endpoints rate limit'
+      },
+      excludedEndpoints: [
+        '/api/notifications/stream',
+        '/api/notifications/sse',
+        '/api/notifications/count',
+        '/api/notifications/email-status',
+        '/api/notifications/test-*'
+      ]
+    },
+    currentRequest: {
+      ip: req.ip,
+      path: req.path,
+      method: req.method,
+      userAgent: req.get('User-Agent')
+    }
+  });
 });
 
 // Root endpoint
@@ -505,6 +777,7 @@ app.get('/', (req, res) => {
       users: '/api/users',
       data: '/api/data',
       device: '/api/device',
+      notifications: '/api/notifications',
       health: '/api/health'
     }
   });
@@ -543,7 +816,7 @@ app.use((error, req, res, next) => {
 });
 
 // Start server
-const PORT = process.env.PORT;
+const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log(`📡 Environment: ${process.env.NODE_ENV }`);
@@ -774,7 +1047,7 @@ const quickHealthCheckInterval = setInterval(() => {
   }
 }, 2 * 60 * 1000); // Every 2 minutes
 
-// Graceful shutdown function
+// Graceful shutdown function with improved cleanup
 const gracefulShutdown = (signal) => {
   console.log(`🛑 Received ${signal}, shutting down gracefully...`);
   
@@ -783,6 +1056,18 @@ const gracefulShutdown = (signal) => {
   clearInterval(internalPingInterval);
   clearInterval(memoryCleanupInterval);
   clearInterval(quickHealthCheckInterval);
+  clearInterval(processHealthCheck);
+  clearInterval(healthCheckInterval);
+  
+  // Clear MQTT timers
+  if (mqttConnectionTimeout) {
+    clearTimeout(mqttConnectionTimeout);
+    mqttConnectionTimeout = null;
+  }
+  if (mqttReconnectTimer) {
+    clearTimeout(mqttReconnectTimer);
+    mqttReconnectTimer = null;
+  }
   
   // Close all socket connections
   io.close(() => {
@@ -791,9 +1076,14 @@ const gracefulShutdown = (signal) => {
   
   // Disconnect MQTT client
   if (mqttClient) {
-    mqttClient.end(true, () => {
-      console.log('🔌 MQTT client disconnected');
-    });
+    try {
+      mqttClient.removeAllListeners();
+      mqttClient.end(true, () => {
+        console.log('🔌 MQTT client disconnected');
+      });
+    } catch (error) {
+      console.log('⚠️ Error during MQTT disconnect:', error.message);
+    }
   }
   
   // Close database connection
@@ -809,18 +1099,118 @@ const gracefulShutdown = (signal) => {
   }, 10000);
 };
 
-// Handle uncaught exceptions
+// Connection health monitoring
+let lastRequestTime = Date.now();
+let healthCheckInterval;
+
+// Monitor server responsiveness
+const startHealthMonitoring = () => {
+  healthCheckInterval = setInterval(() => {
+    const now = Date.now();
+    const timeSinceLastRequest = now - lastRequestTime;
+    
+    // If no requests for 2 minutes, log a warning
+    if (timeSinceLastRequest > 120000) { // 2 minutes
+      console.log('⚠️  No requests received for 2+ minutes, checking server health...');
+      
+      // Check if server is still responsive
+      try {
+        const memUsage = process.memoryUsage();
+        const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+        
+        console.log(`📊 Server health check: Memory=${heapUsedMB}MB, MQTT=${mqttClient?.connected ? 'OK' : 'FAIL'}`);
+        
+        // If memory usage is too high, log warning
+        if (heapUsedMB > 500) {
+          console.log('🚨 CRITICAL: Memory usage too high, consider restarting server');
+        }
+        
+        // If MQTT is disconnected for too long, try reconnection
+        if (mqttClient && !mqttClient.connected && mqttReconnectAttempts < MAX_MQTT_RECONNECT_ATTEMPTS) {
+          console.log('🔄 Attempting MQTT reconnection due to health check...');
+          connectMQTT();
+        }
+      } catch (error) {
+        console.error('❌ Health monitoring check failed:', error.message);
+      }
+    }
+  }, 60000); // Check every minute
+};
+
+// Update last request time on any request
+app.use((req, res, next) => {
+  lastRequestTime = Date.now();
+  next();
+});
+
+// Start health monitoring
+startHealthMonitoring();
+
+// Process monitoring and recovery
+let processHealthCheck = setInterval(() => {
+  try {
+    // Check if process is responsive
+    const start = Date.now();
+    
+    // Simple operation to test responsiveness
+    const test = Math.random() * 1000;
+    
+    const end = Date.now();
+    const responseTime = end - start;
+    
+    // If response time is too high, log warning
+    if (responseTime > 100) {
+      console.warn(`⚠️  Slow process response time: ${responseTime}ms`);
+    }
+    
+    // Check memory usage
+    const memUsage = process.memoryUsage();
+    const heapUsedMB = Math.round(memUsage.heapUsed / 1024 / 1024);
+    
+    // Log process health every 5 minutes
+    if (Date.now() % 300000 < 60000) { // Every 5 minutes
+      console.log(`💓 Process health: Memory=${heapUsedMB}MB, Uptime=${Math.round(process.uptime())}s`);
+    }
+    
+  } catch (error) {
+    console.error('❌ Process health check failed:', error.message);
+  }
+}, 60000); // Every minute
+
+// Enhanced error handling for uncaught exceptions
 process.on('uncaughtException', (error) => {
   console.error('❌ Uncaught Exception:', error);
+  console.error('❌ Stack trace:', error.stack);
+  
+  // Try to log additional system information
+  try {
+    const memUsage = process.memoryUsage();
+    console.error('📊 Memory usage at crash:', memUsage);
+    console.error('📊 Process uptime:', process.uptime());
+  } catch (logError) {
+    console.error('❌ Failed to log crash info:', logError.message);
+  }
+  
   gracefulShutdown('uncaughtException');
 });
 
-// Handle unhandled promise rejections
+// Enhanced error handling for unhandled promise rejections
 process.on('unhandledRejection', (reason, promise) => {
-  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+  console.error('❌ Unhandled Rejection at:', promise);
+  console.error('❌ Reason:', reason);
+  
+  // Try to log additional information
+  try {
+    if (reason instanceof Error) {
+      console.error('❌ Rejection stack:', reason.stack);
+    }
+  } catch (logError) {
+    console.error('❌ Failed to log rejection details:', logError.message);
+  }
+  
   gracefulShutdown('unhandledRejection');
 });
 
-// Handle shutdown signals
+// Handle shutdown signals with improved cleanup
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM')); 

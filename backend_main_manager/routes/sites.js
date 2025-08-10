@@ -6,6 +6,12 @@ import mongoose from 'mongoose';
 
 const router = express.Router();
 
+// Logging middleware for all sites routes
+router.use((req, res, next) => {
+  console.log(`📡 Sites API - ${req.method} ${req.path} - IP: ${req.ip}`);
+  next();
+});
+
 // Helper function to reinitialize MQTT subscriptions
 async function reinitializeMQTT() {
   try {
@@ -236,6 +242,8 @@ router.delete('/deletesite/:id', async (req, res) => {
 // Get all sites - superadmin gets all sites, admin gets only sites created by them
 router.get('/', async (req, res) => {
   try {
+    console.log(`📊 GET /api/sites - IP: ${req.ip}, Role: ${req.query.role || 'none'}, CreatedBy: ${req.query.createdBy || 'none'}`);
+    
     const role = req.query.role;
     const createdBy = req.query.createdBy; // User ID of the admin creating the request
     
@@ -255,8 +263,11 @@ router.get('/', async (req, res) => {
       // For other roles, show all sites (maintain existing behavior)
       sites = await Site.find();
     }
+    
+    console.log(`✅ GET /api/sites - Returning ${sites.length} sites`);
     res.json(sites);
   } catch (error) {
+    console.error(`❌ GET /api/sites - Error: ${error.message}`);
     res.status(500).json({ error: error.message });
   }
 });

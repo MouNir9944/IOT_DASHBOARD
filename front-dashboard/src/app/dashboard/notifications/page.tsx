@@ -51,7 +51,9 @@ interface NotificationCounts {
   total: number;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+import { API_CONFIG, buildApiUrl, validateConfig } from '../../../config/api';
+
+const API_URL = API_CONFIG.BACKEND_URL;
 
 export default function NotificationsPage() {
   const { data: session, status } = useSession();
@@ -90,9 +92,17 @@ export default function NotificationsPage() {
     affectedNotifications: Notification[];
   } | null>(null);
 
-  // Check if API_URL is available
+  // Check if API_URL is available and validate configuration
   useEffect(() => {
     console.log('🔧 Notifications Page - API_URL:', API_URL);
+    
+    // Validate configuration
+    if (!validateConfig()) {
+      setError('Backend URL not configured properly. Please check your environment variables.');
+      setLoading(false);
+      return;
+    }
+    
     if (!API_URL) {
       setError('Backend URL not configured. Please check your environment variables.');
       setLoading(false);

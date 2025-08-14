@@ -17,11 +17,12 @@ import { BarChart } from '@mui/x-charts/BarChart';
 import { DateTimePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import TextField from '@mui/material/TextField';
+import { API_CONFIG, buildApiUrl } from '../../../config/api';
 
-const SITES_API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
-const DATA_API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/data';
+const SITES_API_URL = buildApiUrl('/api/sites');
+const DATA_API_URL = buildApiUrl('/api/data');
 
-console.log('API URLs:', { SITES_API_URL, DATA_API_URL, BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL });
+console.log('API URLs:', { SITES_API_URL, DATA_API_URL, BACKEND_URL: API_CONFIG.BACKEND_URL });
 
 async function fetchGlobalStats({
   siteIds,

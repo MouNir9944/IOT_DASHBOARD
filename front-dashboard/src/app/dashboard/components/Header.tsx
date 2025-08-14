@@ -53,7 +53,10 @@ interface HeaderProps {
   onSidebarToggle?: () => void;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL;
+import { API_CONFIG, buildApiUrl, getNotificationStreamUrl, validateConfig } from '../../../config/api';
+
+// Validate configuration on component mount
+const API_URL = API_CONFIG.BACKEND_URL;
 
 export default function Header({ user, onSidebarToggle }: HeaderProps) {
   const router = useRouter();
@@ -63,6 +66,13 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
   const [notificationCount, setNotificationCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+
+  // Validate configuration on component mount
+  useEffect(() => {
+    if (!validateConfig()) {
+      console.error('❌ Invalid API configuration detected');
+    }
+  }, []);
 
   const fetchNotifications = async () => {
     try {
@@ -128,8 +138,10 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
         eventSourceRef.current.close();
       }
 
-      // Create new SSE connection
-      eventSourceRef.current = new EventSource(`${API_URL}/api/notifications/stream`);
+      // Create new SSE connection using validated URL
+      const streamUrl = getNotificationStreamUrl();
+      console.log('🔌 Connecting to SSE stream:', streamUrl);
+      eventSourceRef.current = new EventSource(streamUrl);
       
       eventSourceRef.current.onopen = () => {
         console.log('🔌 SSE connection established for notifications');

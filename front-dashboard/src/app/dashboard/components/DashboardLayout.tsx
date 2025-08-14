@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import Sidebar from './Sidebar';
 import Header from './Header';
+import { buildApiUrl } from '../../../config/api';
 
 interface User {
   name?: string | null;
@@ -16,7 +17,7 @@ interface DashboardLayoutProps {
   user: User;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL ? process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites' : undefined; // TODO: change to /api/sites/user/{userId}
+const API_URL = buildApiUrl('/api/sites'); // TODO: change to /api/sites/user/{userId}
 
 export default function DashboardLayout({ children, user }: DashboardLayoutProps) {
   const [sites, setSites] = useState<any[]>([]);

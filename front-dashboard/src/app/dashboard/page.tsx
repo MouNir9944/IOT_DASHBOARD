@@ -3,8 +3,9 @@ import { authOptions } from '../api/auth/[...nextauth]/route';
 import { redirect } from 'next/navigation';
 import DashboardLayout from './components/DashboardLayout';
 import DashboardContent from './components/DashboardContent';
+import { buildApiUrl } from '../../config/api';
 
-const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
+const API_URL = buildApiUrl('/api/sites');
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);

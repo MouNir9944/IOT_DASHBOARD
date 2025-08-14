@@ -1087,10 +1087,15 @@ const gracefulShutdown = (signal) => {
   }
   
   // Close database connection
-  mongoose.connection.close(() => {
-    console.log('📡 Database connection closed');
-    process.exit(0);
-  });
+  mongoose.connection.close()
+    .then(() => {
+      console.log('📡 Database connection closed');
+      process.exit(0);
+    })
+    .catch((error) => {
+      console.error('❌ Error closing database connection:', error.message);
+      process.exit(1);
+    });
   
   // Force exit after 10 seconds if graceful shutdown fails
   setTimeout(() => {

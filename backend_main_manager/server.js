@@ -26,7 +26,26 @@ const app = express();
 const server = createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: process.env.CORS_ORIGIN || "*", // Frontend URL with fallback
+    origin: function (origin, callback) {
+      // Allow requests with no origin (like mobile apps or curl requests)
+      if (!origin) return callback(null, true);
+      
+      // Define allowed origins
+      const allowedOrigins = [
+        'http://localhost:3000',
+        'http://162.19.25.155:3000',
+        'http://162.19.25.155:5000',
+        process.env.CORS_ORIGIN
+      ].filter(Boolean); // Remove undefined values
+      
+      // Check if origin is allowed
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.log(`🚫 Socket.IO CORS blocked origin: ${origin}`);
+        callback(new Error('Not allowed by Socket.IO CORS'));
+      }
+    },
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization']
@@ -173,7 +192,26 @@ app.use(helmet());
 
 // CORS configuration for frontend
 app.use(cors({
-  origin: process.env.CORS_ORIGIN,
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Define allowed origins
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://162.19.25.155:3000',
+      'http://162.19.25.155:5000',
+      process.env.CORS_ORIGIN
+    ].filter(Boolean); // Remove undefined values
+    
+    // Check if origin is allowed
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log(`🚫 CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']

@@ -9,7 +9,36 @@ import { Site, Device } from './models/Site.js';
 dotenv.config();
 
 const app = express();
-app.use(cors());
+
+// CORS configuration for Ubuntu server deployment
+app.use(cors({
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    // Define allowed origins
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://162.19.25.155:3000',
+      'http://162.19.25.155:5000',
+      'http://162.19.25.155:5001',
+      'http://162.19.25.155:5002',
+      process.env.CORS_ORIGIN
+    ].filter(Boolean); // Remove undefined values
+    
+    // Check if origin is allowed
+    if (allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.log(`🚫 CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 
 
@@ -432,7 +461,7 @@ mainDB.once('connected', () => {
 });
 
 
-const PORT = 5001; // Force port 5001 for data manager
+const PORT = process.env.PORT || 5001; // Use environment variable or default to 5001
 
 mainDB.once('connected', () => {
   app.listen(PORT, () => {

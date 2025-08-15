@@ -6,8 +6,10 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
+    "start:8001": "PORT=8001 node server.js",
     "start:prod": "node --max-old-space-size=512 --expose-gc server.js",
     "dev": "nodemon server.js",
+    "dev:8001": "PORT=8001 nodemon server.js",
     "monitor": "node monitor.js",
     "deploy-check": "node deployment-health-check.js",
     "diagnose": "node diagnose-server.js",

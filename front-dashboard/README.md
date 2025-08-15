@@ -18,7 +18,7 @@ Create a `.env.local` file in the frontend directory with the following variable
 ```env
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=your-secret-key-here
-NEXT_PUBLIC_BACKEND_URL=http://localhost:5000
+NEXT_PUBLIC_BACKEND_URL=http://localhost:8001
 ```
 
 ### 2. Backend Requirements

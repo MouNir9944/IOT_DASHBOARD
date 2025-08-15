@@ -21,7 +21,7 @@ export const RUNTIME_CONFIG = {
     }
     
     // Strategy 4: Hardcoded fallback for Ubuntu server
-    return 'http://162.19.25.155:5000';
+    return 'http://162.19.25.155:8001';
   })(),
   
   // Frontend URL
@@ -29,7 +29,7 @@ export const RUNTIME_CONFIG = {
     if (typeof window !== 'undefined') {
       return window.location.origin;
     }
-    return 'http://162.19.25.155:3000';
+    return 'http://162.19.25.155:8000';
   })(),
   
   // Environment detection

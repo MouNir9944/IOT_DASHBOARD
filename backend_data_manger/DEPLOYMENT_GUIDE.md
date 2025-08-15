@@ -13,9 +13,9 @@ NODE_ENV=development               # Environment mode
 MONGO_URI=mongodb://localhost:27017/iot_dashboard  # MongoDB connection
 
 # Server URLs
-MAIN_MANAGER_URL=http://162.19.25.155:5000    # Main backend URL
-DEPLOYED_URL=http://162.19.25.155:5001        # Data Manager public URL
-CORS_ORIGIN=http://162.19.25.155:3000         # Frontend URL for CORS
+DEPLOYED_URL=http://162.19.25.155:8002        # Data Manager public URL
+MAIN_MANAGER_URL=http://162.19.25.155:8001 # Main backend URL
+CORS_ORIGIN=http://162.19.25.155:8000         # Frontend URL for CORS
 ```
 
 ## 🚀 **Quick Start (Choose Your Platform)**

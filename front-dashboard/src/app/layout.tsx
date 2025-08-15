@@ -21,8 +21,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           dangerouslySetInnerHTML={{
             __html: `
               window.__RUNTIME_CONFIG__ = {
-                BACKEND_URL: '${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://162.19.25.155:5000'}',
-                FRONTEND_URL: '${process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://162.19.25.155:3000'}',
+                BACKEND_URL: '${process.env.NEXT_PUBLIC_BACKEND_URL || 'http://162.19.25.155:8001'}',
+                                  FRONTEND_URL: '${process.env.NEXT_PUBLIC_FRONTEND_URL || 'http://162.19.25.155:8000'}',
                 IS_DEVELOPMENT: '${process.env.NODE_ENV === 'development'}',
                 IS_PRODUCTION: '${process.env.NODE_ENV === 'production'}'
               };

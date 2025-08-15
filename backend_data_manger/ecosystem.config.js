@@ -1,9 +1,8 @@
 module.exports = {
   apps: [
     {
-      name: 'iot-dashboard-frontend',
-      script: 'npm',
-      args: 'start',
+      name: 'iot-dashboard-mqtt',
+      script: 'servermqtt.js',
       cwd: '.',
       instances: 1,
       autorestart: true,
@@ -11,8 +10,7 @@ module.exports = {
       max_memory_restart: '1G',
       env: {
         NODE_ENV: 'production',
-        PORT: 8000,
-        NEXT_PUBLIC_BACKEND_URL: 'http://localhost:8001'
+        PORT: 8002
       },
       error_file: './logs/err.log',
       out_file: './logs/out.log',
@@ -20,4 +18,4 @@ module.exports = {
       time: true
     }
   ]
-}; 
+};

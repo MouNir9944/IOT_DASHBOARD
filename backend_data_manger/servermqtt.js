@@ -461,11 +461,11 @@ mainDB.once('connected', () => {
 });
 
 
-const PORT = process.env.PORT || 5001; // Use environment variable or default to 5001
+const PORT_SERVER = process.env.PORT_SERVER || 5001; // Use environment variable or default to 5001
 
 mainDB.once('connected', () => {
-  app.listen(PORT, () => {
-    console.log(`🚀 Data Manager Server running on port ${PORT}`);
+  app.listen(PORT_SERVER, '0.0.0.0', () => {
+    console.log(`🚀 Data Manager Server running on port ${PORT_SERVER}`);
     console.log(`📊 Available endpoints:`);
     console.log(`   GET  /ping - Health check endpoint`);
     console.log(`   GET  /api/mqtt/status - MQTT client status`);
@@ -477,45 +477,6 @@ mainDB.once('connected', () => {
   });
 });
 
-// Self-ping mechanism to keep server running when deployed on Render
-const pingInterval = setInterval(() => {
-  const baseUrl = process.env.DEPLOYED_URL ;
-  const url = `${baseUrl}/ping`;
-  
-  console.log(`🔄 Self-pinging MQTT Data Manager server at ${url}...`);
-  
-  fetch(url, {
-    method: 'GET',
-    headers: {
-      'User-Agent': 'Render-Keep-Alive/1.0'
-    },
-    timeout: 10000
-  })
-    .then(response => {
-      if (response.ok) {
-        console.log('✅ Self-ping successful - MQTT Data Manager kept awake');
-      } else {
-        console.log('⚠️ Self-ping failed - Response not OK:', response.status);
-      }
-    })
-    .catch(error => {
-      console.log('❌ Self-ping failed:', error.message);
-    });
-}, 5 * 60 * 1000); // Ping every 5 minutes
 
-// Cleanup on process exit
-process.on('SIGINT', () => {
-  console.log('🛑 Shutting down MQTT Data Manager server...');
-  clearInterval(pingInterval);
-  mqttClient.disconnect();
-  process.exit(0);
-});
-
-process.on('SIGTERM', () => {
-  console.log('🛑 Shutting down MQTT Data Manager server...');
-  clearInterval(pingInterval);
-  mqttClient.disconnect();
-  process.exit(0);
-});
 
 

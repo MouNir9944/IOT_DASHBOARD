@@ -14,15 +14,19 @@ const nextConfig: NextConfig = {
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
-  // Server configuration
-  serverExternalPackages: [],
   // Environment variables configuration
   env: {
-    NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL || 'http://162.19.25.155:5000',
+    NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001',
   },
   // Public runtime config for client-side access
   publicRuntimeConfig: {
-    backendUrl: process.env.NEXT_PUBLIC_BACKEND_URL || 'http://162.19.25.155:5000',
+    backendUrl: process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001',
+  },
+  // Server configuration
+  serverExternalPackages: [],
+  // Ensure port 8000 is always used
+  serverRuntimeConfig: {
+    port: 8000,
   },
 };
 

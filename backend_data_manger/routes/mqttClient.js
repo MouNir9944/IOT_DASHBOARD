@@ -8,12 +8,14 @@ import { Site, Device } from '../models/Site.js';
 dotenv.config(); // Load environment variables from .env file
 
 // Ensure MONGO_URI_site1 is available
-const MONGO_URI_site1 = process.env.MONGO_URI_site1 || process.env.MONGO_URI;
+const MONGO_URI = process.env.MONGO_URI ;
+const MONGO_URI_site1 = process.env.MONGO_URI_site1 ;
 
 let client;
 let topics = [];
 let deviceMap = {}; // Maps deviceId -> { siteDbName, siteName, siteId, type, deviceName }
 let siteConnections = {}; // Cache DB connections
+let healthCheckInterval; // Connection health check interval
 
 function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
   // Ensure URL has protocol
@@ -93,26 +95,51 @@ function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
 
       const { siteDbName, siteName, siteId, type, deviceName } = meta;
 
-      // Create or get site DB connection
-      if (!siteConnections[siteDbName]) {
+      // Create or get site DB connection with better error handling
+      let siteDB = siteConnections[siteDbName];
+      
+      if (!siteDB || siteDB.readyState !== 1) {
+        // Close existing connection if it's in a bad state
+        if (siteDB) {
+          try {
+            await siteDB.close();
+          } catch (e) {
+            console.log(`⚠️ Error closing bad connection to ${siteDbName}:`, e.message);
+          }
+        }
+        
+        // Create new connection with better timeout settings
         siteConnections[siteDbName] = mongoose.createConnection(MONGO_URI_site1, {
           dbName: siteDbName,
-          serverSelectionTimeoutMS: 30000,
-          authSource: 'iot_dashboard',
+          serverSelectionTimeoutMS: 15000, // Reduced from 30s
+          socketTimeoutMS: 20000, // 20 second socket timeout
+          connectTimeoutMS: 15000, // 15 second connection timeout
+          authSource: 'site1',
           retryWrites: true,
-          w: 'majority'
+          w: 'majority',
+          maxPoolSize: 5, // Limit connection pool
+          minPoolSize: 1,
+          maxIdleTimeMS: 30000, // Close idle connections after 30s
+          heartbeatFrequencyMS: 10000 // Heartbeat every 10s
         });
 
         siteConnections[siteDbName].on('error', err => {
           console.error(`❌ DB error for site DB "${siteDbName}":`, err.message);
+          // Mark connection as bad so it gets recreated
+          siteConnections[siteDbName].readyState = 0;
         });
 
         siteConnections[siteDbName].on('connected', () => {
           console.log(`✅ Connected to site DB: ${siteDbName}`);
         });
-      }
 
-      const siteDB = siteConnections[siteDbName];
+        siteConnections[siteDbName].on('disconnected', () => {
+          console.log(`⚠️ Disconnected from site DB: ${siteDbName}`);
+          siteConnections[siteDbName].readyState = 0;
+        });
+
+        siteDB = siteConnections[siteDbName];
+      }
 
       // Define the collection model (collection name is device type)
       const collectionName = type;
@@ -131,7 +158,42 @@ function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
         ...values // Include all extracted values
       };
 
-      await DeviceDataModel.create(dataToSave);
+      // Retry logic for database operations
+      let retryCount = 0;
+      const maxRetries = 3;
+      let saved = false;
+      
+      while (!saved && retryCount < maxRetries) {
+        try {
+          await DeviceDataModel.create(dataToSave);
+          saved = true;
+          console.log(`✅ Data saved successfully on attempt ${retryCount + 1}`);
+        } catch (error) {
+          retryCount++;
+          console.warn(`⚠️ Database save attempt ${retryCount} failed for device ${deviceId}:`, error.message);
+          
+          if (retryCount >= maxRetries) {
+            throw new Error(`Failed to save data after ${maxRetries} attempts: ${error.message}`);
+          }
+          
+          // Wait before retry with exponential backoff
+          const delay = Math.pow(2, retryCount) * 1000; // 1s, 2s, 4s
+          console.log(`🔄 Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          
+          // Check if connection is still good, recreate if needed
+          if (siteDB.readyState !== 1) {
+            console.log(`🔄 Recreating database connection for ${siteDbName}...`);
+            delete siteConnections[siteDbName];
+            siteDB = null;
+            break; // Break out of retry loop to recreate connection
+          }
+        }
+      }
+      
+      if (!saved) {
+        throw new Error(`Failed to save data after ${maxRetries} attempts`);
+      }
 
       console.log(`✅ Data saved: Site="${siteName}", DB="${siteDbName}", Collection="${collectionName}", Device="${deviceId}", Values=${JSON.stringify(values)}`);
 
@@ -953,6 +1015,34 @@ function getDefaultUnit(type) {
   return units[type] || 'unit';
 }
 
+// Helper function to check database connection health
+function isConnectionHealthy(connection) {
+  return connection && connection.readyState === 1;
+}
+
+// Helper function to close and cleanup a database connection
+async function closeConnection(connection, siteName) {
+  if (connection && connection.readyState !== 0) {
+    try {
+      await connection.close();
+      console.log(`🔌 Closed connection to ${siteName}`);
+    } catch (error) {
+      console.warn(`⚠️ Error closing connection to ${siteName}:`, error.message);
+    }
+  }
+}
+
+// Helper function to cleanup all site connections
+async function cleanupConnections() {
+  const cleanupPromises = Object.entries(siteConnections).map(async ([siteName, connection]) => {
+    await closeConnection(connection, siteName);
+  });
+  
+  await Promise.allSettled(cleanupPromises);
+  siteConnections = {};
+  console.log('🧹 Cleaned up all site connections');
+}
+
 // Test function to verify daily consumption calculation
 export async function testDailyConsumption(deviceId, deviceType, siteId) {
   console.log(`🧪 Testing daily consumption for device ${deviceId}`);
@@ -1071,11 +1161,14 @@ export default {
   },
 
   // Disconnect client
-  disconnect() {
+  async disconnect() {
     if (client) {
       client.end();
       console.log('🔌 MQTT client disconnected');
     }
+    
+    // Cleanup all database connections
+    await cleanupConnections();
   }
 };
 

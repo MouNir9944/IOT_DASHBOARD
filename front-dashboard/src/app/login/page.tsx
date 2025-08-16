@@ -25,18 +25,29 @@ export default function LoginPage() {
     setIsLoading(true);
     setError('');
 
-    const res = await signIn('credentials', {
-      redirect: false,
-      email,
-      password,
-    });
+    try {
+      const res = await signIn('credentials', {
+        redirect: false,
+        email,
+        password,
+      });
 
-    if (res?.ok) {
-      router.push('/dashboard');
-    } else {
-      setError('Invalid email or password. Please check your credentials and try again.');
+      if (res?.ok) {
+        router.push('/dashboard');
+      } else {
+        console.error('SignIn response:', res);
+        if (res?.error) {
+          setError(`Authentication failed: ${res.error}`);
+        } else {
+          setError('Invalid email or password. Please check your credentials and try again.');
+        }
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      setError('An unexpected error occurred. Please try again later.');
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   return (

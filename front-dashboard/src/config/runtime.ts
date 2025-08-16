@@ -20,8 +20,8 @@ export const RUNTIME_CONFIG = {
       return process.env.NEXT_PUBLIC_BACKEND_URL;
     }
     
-    // Strategy 4: Hardcoded fallback for Ubuntu server
-    return 'http://162.19.25.155:8001';
+    // Strategy 4: Hardcoded fallback for localhost
+    return 'http://localhost:8001';
   })(),
   
   // Frontend URL
@@ -29,7 +29,7 @@ export const RUNTIME_CONFIG = {
     if (typeof window !== 'undefined') {
       return window.location.origin;
     }
-    return 'http://162.19.25.155:8000';
+    return 'http://localhost:8000';
   })(),
   
   // Environment detection

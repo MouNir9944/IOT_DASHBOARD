@@ -784,7 +784,7 @@ async function getDailyConsumption(deviceId, deviceType, siteId) {
     const siteDB = mongoose.createConnection(MONGO_URI_site1, {
       dbName: siteDbName,
       serverSelectionTimeoutMS: 30000,
-      authSource: 'iot_dashboard',
+      authSource: 'site1',
       retryWrites: true,
       w: 'majority'
     });

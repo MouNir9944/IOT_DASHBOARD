@@ -18,11 +18,10 @@ app.use(cors({
     
     // Define allowed origins
     const allowedOrigins = [
-      'http://localhost:3000',
-      'http://162.19.25.155:3000',
-      'http://162.19.25.155:5000',
-      'http://162.19.25.155:5001',
-      'http://162.19.25.155:5002',
+      'http://localhost:8001',
+      'http://162.19.25.155:8000',
+      'http://162.19.25.155:8001',
+      'http://162.19.25.155:8002',
       process.env.CORS_ORIGIN
     ].filter(Boolean); // Remove undefined values
     
@@ -43,7 +42,22 @@ app.use(express.json());
 
 
 const MONGO_URI = process.env.MONGO_URI;
-const MONGO_URI_site1 = process.env.MONGO_URI_site1 || process.env.MONGO_URI;
+const MONGO_URI_site1 = process.env.MONGO_URI_site1;
+
+// Validate environment variables
+if (!MONGO_URI) {
+  console.error('❌ MONGO_URI environment variable is not set');
+  process.exit(1);
+}
+
+if (!MONGO_URI_site1) {
+  console.error('❌ MONGO_URI_site1 environment variable is not set');
+  process.exit(1);
+}
+
+console.log('🔧 MongoDB Connection Configuration:');
+console.log(`   Main DB: ${MONGO_URI.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')}`);
+console.log(`   Site DB: ${MONGO_URI_site1.replace(/\/\/[^:]+:[^@]+@/, '//***:***@')}`);
 
 const mainDB = mongoose.createConnection(MONGO_URI, {
   dbName: 'iot_dashboard',
@@ -58,7 +72,25 @@ mainDB.model('Site', Site.schema, 'sites');
 mainDB.model('Device', Device.schema, 'devices');
 
 mainDB.on('connected', () => console.log('✅ Main DB Connected'));
-mainDB.on('error', (err) => console.error('❌ Main DB Error:', err));
+mainDB.on('error', (err) => {
+  console.error('❌ Main DB Error:', err);
+  if (err.name === 'MongoServerError') {
+    switch (err.code) {
+      case 18:
+        console.error('🔐 Authentication failed. Please check your MongoDB username and password.');
+        console.error('💡 Make sure your .env file has the correct MONGO_URI with valid credentials.');
+        break;
+      case 13:
+        console.error('🚫 Authorization failed. Your user lacks permissions for the iot_dashboard database.');
+        console.error('💡 Run this command in MongoDB to grant permissions:');
+        console.error('   db.grantRolesToUser("your_username", [{ role: "readWrite", db: "iot_dashboard" }])');
+        break;
+      default:
+        console.error('💡 MongoDB Error Code:', err.code, '-', err.codeName);
+    }
+  }
+});
+mainDB.on('disconnected', () => console.log('⚠️ Main DB Disconnected'));
 
 /**************************************/
 // Ping endpoint for keep-alive
@@ -86,13 +118,13 @@ app.post('/api/site/:siteId/:type/index', async (req, res) => {
     const dbName = site.name.replace(/\s+/g, '_'); // Use site name, same as global endpoint
     
     // Get site-specific database connection
-    const siteDB = mongoose.createConnection(MONGO_URI_site1, {
-      dbName,
-      serverSelectionTimeoutMS: 30000,
-      authSource: 'site1',
-      retryWrites: true,
-      w: 'majority'
-    });
+            const siteDB = mongoose.createConnection(MONGO_URI_site1, {
+          dbName,
+          serverSelectionTimeoutMS: 30000,
+          authSource: 'site1',
+          retryWrites: true,
+          w: 'majority'
+        });
     
     // Create model for the specific type
     const DataSchema = new mongoose.Schema({}, { strict: false });

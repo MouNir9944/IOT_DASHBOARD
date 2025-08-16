@@ -322,61 +322,37 @@ export default function DeviceDetailPage() {
     return { historicalData, realtimeData };
   };
 
-  // Get date range based on selected period (matching site page)
+  // Get date range based on selected period (using site page approach)
   const getDateRange = () => {
     const now = new Date();
-    // Set 'to' to end of current day to include all data for today
-    const endOfDay = new Date(now);
-    endOfDay.setHours(23, 59, 59, 999);
-    const to = endOfDay.toISOString();
-    
+    const to = now.toISOString();
     let from: string;
+    
     switch (selectedPeriod) {
       case '7d':
-        // For 7 days, we want to include today + 6 previous days
-        const startDate = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-        startDate.setHours(0, 0, 0, 0); // Start of day
-        from = startDate.toISOString();
+        from = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString();
         break;
       case '30d':
-        // For 30 days, we want to include today + 29 previous days
-        const start30 = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000);
-        start30.setHours(0, 0, 0, 0); // Start of day
-        from = start30.toISOString();
+        from = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString();
         break;
       case 'custom':
         if (customFrom && customTo) {
-          const customToEndOfDay = new Date(customTo);
-          customToEndOfDay.setHours(23, 59, 59, 999);
-          const customFromStartOfDay = new Date(customFrom);
-          customFromStartOfDay.setHours(0, 0, 0, 0);
-          return { 
-            from: customFromStartOfDay.toISOString(), 
-            to: customToEndOfDay.toISOString() 
-          };
+          return { from: customFrom.toISOString(), to: customTo.toISOString() };
         }
-        const defaultStart = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-        defaultStart.setHours(0, 0, 0, 0);
-        from = defaultStart.toISOString();
+        from = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString();
         break;
       default:
-        const defaultStart2 = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-        defaultStart2.setHours(0, 0, 0, 0);
-        from = defaultStart2.toISOString();
+        from = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString();
     }
     
-    const fromDate = new Date(from).toLocaleDateString();
-    const toDate = new Date(to).toLocaleDateString();
-    console.log('📅 Date range calculated:', { 
+    console.log('📅 Date range calculated (site page approach):', { 
       from, 
       to, 
-      fromDate, 
-      toDate, 
       selectedPeriod,
-      today: now.toLocaleDateString(),
-      todayISO: now.toISOString().slice(0, 10),
-      expectingAPIData: ['2025-08-04', '2025-08-05']
+      fromDate: new Date(from).toLocaleDateString(),
+      toDate: new Date(to).toLocaleDateString()
     });
+    
     return { from, to };
   };
 
@@ -514,76 +490,45 @@ export default function DeviceDetailPage() {
     document.body.removeChild(link);
   };
 
-  // Helper to generate period labels between two dates
+  // Helper to generate period labels between two dates (using site page approach)
   function generatePeriodLabels(from: string, to: string, granularity: string) {
     const start = new Date(from);
     const end = new Date(to);
     const labels: string[] = [];
     let current = new Date(start);
     
-    // Set current to start of day to ensure consistent comparison
-    if (granularity === 'day') {
-      current.setHours(0, 0, 0, 0);
-    }
-    
-    // Get just the date parts for comparison (YYYY-MM-DD format)
-    const endDateStr = granularity === 'day' ? end.toISOString().slice(0, 10) : end.toISOString();
-    
-    console.log('🔍 Starting period generation:', {
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      endDateStr,
-      granularity,
-      today: new Date().toISOString().slice(0, 10)
+    console.log('🔍 generatePeriodLabels (site page approach):', {
+      from,
+      to,
+      startDate: start.toISOString().slice(0, 10),
+      endDate: end.toISOString().slice(0, 10),
+      selectedPeriod,
+      granularity
     });
     
-    while (true) {
-      if (granularity === 'hour') {
-        labels.push(current.toISOString().slice(0, 13) + ':00:00.000Z');
-        current.setHours(current.getHours() + 1);
-        if (current > end) break;
-      } else if (granularity === 'day') {
-        const currentDateStr = current.toISOString().slice(0, 10);
-        labels.push(currentDateStr);
-        
-        console.log('🔍 Processing day:', {
-          currentDateStr,
-          endDateStr,
-          isEqual: currentDateStr === endDateStr,
-          shouldBreak: currentDateStr === endDateStr
-        });
-        
-        // Break if we've reached the end date
-        if (currentDateStr === endDateStr) break;
-        
-        current.setDate(current.getDate() + 1);
-      } else if (granularity === 'week') {
+    while (current <= end) {
+      if (granularity === 'day') {
         labels.push(current.toISOString().slice(0, 10));
-        if (current >= end) break;
-        current.setDate(current.getDate() + 7);
+        current.setDate(current.getDate() + 1);
       } else if (granularity === 'month') {
         labels.push(current.toISOString().slice(0, 7));
-        if (current >= end) break;
         current.setMonth(current.getMonth() + 1);
+      } else if (granularity === 'year') {
+        labels.push(current.getFullYear().toString());
+        current.setFullYear(current.getFullYear() + 1);
       } else {
         labels.push(current.toISOString().slice(0, 10));
-        if (current >= end) break;
         current.setDate(current.getDate() + 1);
       }
     }
-    console.log('📊 Period labels generated:', {
-      from, 
-      to, 
-      granularity, 
-      endDateStr,
+    
+    console.log('📊 Period labels generated (site page approach):', {
       labelsCount: labels.length,
       firstLabel: labels[0],
       lastLabel: labels[labels.length - 1],
-      allLabels: labels,
-      startDate: start.toISOString(),
-      endDate: end.toISOString(),
-      todayExpected: new Date().toISOString().slice(0, 10)
+      allLabels: labels
     });
+    
     return labels;
   }
 
@@ -690,6 +635,38 @@ export default function DeviceDetailPage() {
     const granularity = getGranularity();
     const periodLabels = generatePeriodLabels(from, to, granularity);
     
+    // Ensure period labels have exactly the expected length
+    const expectedLabels = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : periodLabels.length;
+    if (periodLabels.length !== expectedLabels) {
+      console.warn(`⚠️ Period labels length mismatch: Expected ${expectedLabels}, got ${periodLabels.length}`);
+      console.warn('🔍 Original labels:', periodLabels);
+      
+      // Generate a corrected set of labels with exactly the expected number
+      const correctedLabels: string[] = [];
+      const startDate = new Date(from);
+      
+      for (let i = 0; i < expectedLabels; i++) {
+        const currentDate = new Date(startDate);
+        currentDate.setDate(startDate.getDate() + i);
+        correctedLabels.push(currentDate.toISOString().slice(0, 10));
+      }
+      
+      console.log('🔧 Corrected labels:', correctedLabels);
+      // Use the corrected labels
+      periodLabels.length = 0;
+      periodLabels.push(...correctedLabels);
+    }
+    
+    // Debug: Log the final period labels being used
+    console.log('🔍 Final period labels for chart:', {
+      expectedLabels,
+      actualLabels: periodLabels.length,
+      labels: periodLabels,
+      firstLabel: periodLabels[0],
+      lastLabel: periodLabels[periodLabels.length - 1],
+      dateRange: { from, to }
+    });
+    
     console.log('📊 Fetching device stats for:', { siteId, deviceId, deviceType, selectedPeriod, granularity });
     setStatsLoading(true);
     setChartLoading(true);
@@ -765,8 +742,56 @@ export default function DeviceDetailPage() {
         console.log('- Label format test:', periodLabels[0], 'vs', filled[0]?.period);
       }
       
-      setChartData(chartDataArray);
-      setChartLabels(periodLabels);
+      // Debug: Show the exact date range and labels being used
+      console.log('🔍 CHART DATA DEBUG:', {
+        dateRange: { from, to },
+        periodLabels: periodLabels,
+        apiData: filled,
+        chartData: chartDataArray,
+        valueMap: Array.from(valueMap.entries())
+      });
+      
+      // Ensure chart data array has exactly the expected length
+      const expectedLength = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : periodLabels.length;
+      if (chartDataArray.length !== expectedLength) {
+        console.warn(`⚠️ Chart data length mismatch: Expected ${expectedLength}, got ${chartDataArray.length}`);
+        // Pad or truncate to match expected length
+        if (chartDataArray.length < expectedLength) {
+          const paddedArray = [...chartDataArray, ...Array(expectedLength - chartDataArray.length).fill(0)];
+          setChartData(paddedArray);
+          console.log(`🔧 Padded chart data to ${paddedArray.length} elements`);
+        } else {
+          const truncatedArray = chartDataArray.slice(0, expectedLength);
+          setChartData(truncatedArray);
+          console.log(`🔧 Truncated chart data to ${truncatedArray.length} elements`);
+        }
+      } else {
+        setChartData(chartDataArray);
+      }
+      
+      // Ensure chart labels have exactly the expected length
+      const expectedLabels = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : periodLabels.length;
+      if (periodLabels.length !== expectedLabels) {
+        console.warn(`⚠️ Chart labels length mismatch: Expected ${expectedLabels}, got ${periodLabels.length}`);
+        // Generate corrected labels
+        const correctedLabels: string[] = [];
+        const startDate = new Date(from);
+        
+        for (let i = 0; i < expectedLabels; i++) {
+          const currentDate = new Date(startDate);
+          currentDate.setDate(startDate.getDate() + i);
+          correctedLabels.push(currentDate.toLocaleDateString('en-US', { 
+            month: 'short', 
+            day: 'numeric'
+          }));
+        }
+        
+        setChartLabels(correctedLabels);
+        console.log(`🔧 Set corrected chart labels: ${correctedLabels.length} labels`);
+      } else {
+        setChartLabels(periodLabels);
+      }
+      
       console.log('📊 Chart data prepared:', chartDataArray.length, 'data points');
       
       // Also convert to historical data format for backward compatibility
@@ -783,8 +808,31 @@ export default function DeviceDetailPage() {
       } else {
         // Handle error response like site page
         console.error('❌ Failed to fetch device stats:', response.status);
-        setChartData(Array(periodLabels.length).fill(0));
-        setChartLabels(periodLabels);
+        
+        // Ensure error case also has the correct length
+        const expectedLength = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : periodLabels.length;
+        setChartData(Array(expectedLength).fill(0));
+        
+        // Ensure error case also has the correct labels
+        const expectedLabels = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : periodLabels.length;
+        if (periodLabels.length !== expectedLabels) {
+          // Generate corrected labels for error case
+          const correctedLabels: string[] = [];
+          const startDate = new Date(from);
+          
+          for (let i = 0; i < expectedLabels; i++) {
+            const currentDate = new Date(startDate);
+            currentDate.setDate(startDate.getDate() + i);
+            correctedLabels.push(currentDate.toLocaleDateString('en-US', { 
+              month: 'short', 
+              day: 'numeric'
+            }));
+          }
+          
+          setChartLabels(correctedLabels);
+        } else {
+          setChartLabels(periodLabels);
+        }
         setDeviceStats(null);
         setHistoricalData([]);
       }
@@ -2587,6 +2635,17 @@ export default function DeviceDetailPage() {
               <CalendarIcon className="w-5 h-5 text-gray-500" />
               <span className="text-sm font-medium text-gray-700">Time Period:</span>
             </div>
+            {/* Debug info */}
+            <div className="text-xs text-gray-500">
+              {(() => {
+                const { from, to } = getDateRange();
+                const fromDate = new Date(from).toLocaleDateString();
+                const toDate = new Date(to).toLocaleDateString();
+                return `${fromDate} to ${toDate} (${chartLabels.length} days)`;
+              })()}
+            </div>
+            
+
             <div className="flex flex-1 items-center">
               <div className="flex flex-wrap gap-2 items-center">
                 {timePeriods.map((period) => (
@@ -2630,7 +2689,7 @@ export default function DeviceDetailPage() {
           {/* Chart Display */}
           <div className="mb-4 flex justify-between items-center">
             <h3 className="text-lg font-semibold text-gray-900">
-              Daily Consumption Chart
+              Daily Consumption Chart ({chartLabels.length} days)
             </h3>
             {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && chartData && chartData.length > 0 && (
               <button
@@ -2683,12 +2742,19 @@ export default function DeviceDetailPage() {
               xAxis={[{ 
                 data: chartLabels.map(d => {
                   const date = new Date(d);
-                  return date.toLocaleDateString('en-US', { 
+                  // Debug: Log the date conversion
+                  const formattedDate = date.toLocaleDateString('en-US', { 
                     month: 'short', 
                     day: 'numeric',
                     hour: getGranularity() === 'hour' ? '2-digit' : undefined,
                     minute: getGranularity() === 'hour' ? '2-digit' : undefined
                   });
+                  console.log('🔍 Chart label conversion:', {
+                    original: d,
+                    parsedDate: date.toISOString(),
+                    formatted: formattedDate
+                  });
+                  return formattedDate;
                 }), 
                 label: 'Date' 
               }]}
@@ -2706,6 +2772,8 @@ export default function DeviceDetailPage() {
               height={350}
             />
           )}
+          
+
           
           {/* Device Statistics with Consumption Analysis */}
           {deviceStats && deviceStats.data.length > 0 && (

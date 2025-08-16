@@ -128,17 +128,25 @@ export default function DashboardContent() {
   // Get date range based on selected period
   const getDateRange = () => {
     const now = new Date();
-    const to = now.toISOString();
+    
+    // Adjust for timezone offset to get local midnight
+    const timezoneOffset = now.getTimezoneOffset() * 60 * 1000;
+    
+    // Set to end of current day for consistent period boundaries (local time)
+    const to = new Date(now.getTime() - timezoneOffset + 24 * 60 * 60 * 1000 - 1).toISOString();
     let from: string;
 
     switch (selectedPeriod) {
       case '7d':
-        // Calculate exactly 7 days ago
+        // Calculate exactly 7 days ago, starting from beginning of that day (local time)
+        // Add one day to compensate for timezone shift that causes data to appear on wrong day
         const sevenDaysAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-        from = sevenDaysAgo.toISOString();
+        from = new Date(sevenDaysAgo.getTime() - timezoneOffset).toISOString();
         break;
       case '30d':
-        from = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString();
+        // Add one day to compensate for timezone shift
+        const thirtyDaysAgo = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
+        from = new Date(thirtyDaysAgo.getTime() - timezoneOffset).toISOString();
         break;
       case 'custom':
         if (customFrom && customTo) {
@@ -146,11 +154,11 @@ export default function DashboardContent() {
         }
         // Fallback to 7d if custom dates not set
         const fallbackDate = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-        from = fallbackDate.toISOString();
+        from = new Date(fallbackDate.getTime() - timezoneOffset).toISOString();
         break;
       default:
         const defaultDate = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-        from = defaultDate.toISOString();
+        from = new Date(defaultDate.getTime() - timezoneOffset).toISOString();
     }
 
     return { from, to };
@@ -169,6 +177,9 @@ export default function DashboardContent() {
     const periods: { [key: string]: number } = {};
     const labels: string[] = [];
     
+    console.log('fillMissingPeriods called with:', { fromDate, toDate, granularity, dataLength: data.length });
+    console.log('Date range:', { startDate: startDate.toISOString(), endDate: endDate.toISOString() });
+    
     // Initialize all periods with zero
     let currentDate = new Date(startDate);
     while (currentDate <= endDate) {
@@ -177,6 +188,8 @@ export default function DashboardContent() {
       
       switch (granularity) {
         case 'day':
+          // Use consistent date format that matches backend expectations
+          // For daily data, we want to match the backend's date format exactly
           periodKey = currentDate.toISOString().slice(0, 10);
           label = currentDate.toLocaleDateString('en-US', { 
             month: 'short', 
@@ -213,19 +226,40 @@ export default function DashboardContent() {
       labels.push(label);
     }
     
-    // Fill in actual data
+    console.log('Initialized periods:', periods);
+    console.log('Initialized labels:', labels);
+    
+    // Fill in actual data - handle both period and date formats from backend
     data.forEach(item => {
-      periods[item.period] = item.total;
+      let key = item.period;
+      
+      // If the backend returns a date instead of period, convert it to our period format
+      if (item.date) {
+        const itemDate = new Date(item.date);
+        key = itemDate.toISOString().slice(0, 10);
+      }
+      
+      console.log('Processing item:', item, 'key:', key, 'periods has key:', periods.hasOwnProperty(key));
+      
+      // Also handle cases where the backend might return the period in a different format
+      if (periods.hasOwnProperty(key)) {
+        periods[key] = item.total || item.value || 0;
+      }
     });
+    
+    console.log('After filling data, periods:', periods);
     
     // Convert to sorted array
     const sortedEntries = Object.entries(periods)
       .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime());
     
-    return {
+    const result = {
       values: sortedEntries.map(([_, total]) => total),
       labels: labels
     };
+    
+    console.log('Final result:', result);
+    return result;
   };
 
   // Helper function to make data responsive
@@ -399,6 +433,15 @@ export default function DashboardContent() {
     const granularity = getGranularity();
 
     console.log('Fetching stats with:', { siteIds, from, to, granularity, selectedPeriod });
+    console.log('Date range details:', { 
+      from: new Date(from).toISOString(), 
+      to: new Date(to).toISOString(),
+      fromLocal: new Date(from).toLocaleDateString(),
+      toLocal: new Date(to).toLocaleDateString(),
+      fromUTC: new Date(from).toUTCString(),
+      toUTC: new Date(to).toUTCString(),
+      timezoneOffset: new Date().getTimezoneOffset()
+    });
 
     // Energy
     console.log('Fetching energy stats', { siteIds, from, to, granularity });
@@ -410,7 +453,9 @@ export default function DashboardContent() {
       type: 'energy',
       field: 'value'
     }).then(data => {
+      console.log('Energy raw data from backend:', data);
       const filledData = fillMissingPeriods(data, from, to, granularity);
+      console.log('Energy filled data:', filledData);
       const responsiveData = makeDataResponsive(filledData.values, filledData.labels);
       setEnergyData(responsiveData.values);
       setEnergyLabels(responsiveData.labels);
@@ -432,7 +477,9 @@ export default function DashboardContent() {
       type: 'water',
       field: 'value'
     }).then(data => {
+      console.log('Water raw data from backend:', data);
       const filledData = fillMissingPeriods(data, from, to, granularity);
+      console.log('Water filled data:', filledData);
       const responsiveData = makeDataResponsive(filledData.values, filledData.labels);
       setWaterData(responsiveData.values);
       setWaterLabels(responsiveData.labels);
@@ -452,7 +499,9 @@ export default function DashboardContent() {
       type: 'gas',
       field: 'value'
     }).then(data => {
+      console.log('Gas raw data from backend:', data);
       const filledData = fillMissingPeriods(data, from, to, granularity);
+      console.log('Gas filled data:', filledData);
       const responsiveData = makeDataResponsive(filledData.values, filledData.labels);
       setGasData(responsiveData.values);
       setGasLabels(responsiveData.labels);

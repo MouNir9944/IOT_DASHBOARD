@@ -42,11 +42,15 @@ app.use(cors({
 app.use(express.json());
 
 
-const MONGO_URI = process.env.MONGO_URI ;
+const MONGO_URI = process.env.MONGO_URI;
+const MONGO_URI_site1 = process.env.MONGO_URI_site1 || process.env.MONGO_URI;
 
 const mainDB = mongoose.createConnection(MONGO_URI, {
   dbName: 'iot_dashboard',
-  serverSelectionTimeoutMS: 30000
+  serverSelectionTimeoutMS: 30000,
+  authSource: 'iot_dashboard',
+  retryWrites: true,
+  w: 'majority'
 });
 
 // Register schemas on mainDB
@@ -82,9 +86,12 @@ app.post('/api/site/:siteId/:type/index', async (req, res) => {
     const dbName = site.name.replace(/\s+/g, '_'); // Use site name, same as global endpoint
     
     // Get site-specific database connection
-    const siteDB = mongoose.createConnection(MONGO_URI, {
+    const siteDB = mongoose.createConnection(MONGO_URI_site1, {
       dbName,
-      serverSelectionTimeoutMS: 30000
+      serverSelectionTimeoutMS: 30000,
+      authSource: 'iot_dashboard',
+      retryWrites: true,
+      w: 'majority'
     });
     
     // Create model for the specific type
@@ -162,9 +169,12 @@ app.post('/api/global/:type/index', async (req, res) => {
         
         const dbName = site.name.replace(/\s+/g, '_'); // Use site name, same as main manager
         
-        const siteDB = mongoose.createConnection(MONGO_URI, {
+        const siteDB = mongoose.createConnection(MONGO_URI_site1, {
           dbName,
-          serverSelectionTimeoutMS: 30000
+          serverSelectionTimeoutMS: 30000,
+          authSource: 'iot_dashboard',
+          retryWrites: true,
+          w: 'majority'
         });
         
         const DataSchema = new mongoose.Schema({}, { strict: false });
@@ -280,7 +290,10 @@ app.post('/api/devices/:deviceId/alerts/:alertId/assign-users', async (req, res)
     // Connect to main database
     const mainDB = mongoose.createConnection(process.env.MONGO_URI, {
       dbName: 'iot_dashboard',
-      serverSelectionTimeoutMS: 30000
+      serverSelectionTimeoutMS: 30000,
+      authSource: 'iot_dashboard',
+      retryWrites: true,
+      w: 'majority'
     });
 
     const Device = mainDB.model('Device', new mongoose.Schema({}, { strict: false }), 'devices');

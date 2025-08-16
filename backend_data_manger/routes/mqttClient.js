@@ -7,6 +7,9 @@ import { Site, Device } from '../models/Site.js';
 
 dotenv.config(); // Load environment variables from .env file
 
+// Ensure MONGO_URI_site1 is available
+const MONGO_URI_site1 = process.env.MONGO_URI_site1 || process.env.MONGO_URI;
+
 let client;
 let topics = [];
 let deviceMap = {}; // Maps deviceId -> { siteDbName, siteName, siteId, type, deviceName }
@@ -92,9 +95,12 @@ function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
 
       // Create or get site DB connection
       if (!siteConnections[siteDbName]) {
-        siteConnections[siteDbName] = mongoose.createConnection(process.env.MONGO_URI, {
+        siteConnections[siteDbName] = mongoose.createConnection(MONGO_URI_site1, {
           dbName: siteDbName,
           serverSelectionTimeoutMS: 30000,
+          authSource: 'iot_dashboard',
+          retryWrites: true,
+          w: 'majority'
         });
 
         siteConnections[siteDbName].on('error', err => {
@@ -201,7 +207,10 @@ async function checkAlertConditions(deviceId, value, unit, type, siteId, siteNam
     // Connect to main database to get device alert configurations
     const mainDB = mongoose.createConnection(process.env.MONGO_URI, {
       dbName: 'iot_dashboard',
-      serverSelectionTimeoutMS: 30000
+      serverSelectionTimeoutMS: 30000,
+      authSource: 'iot_dashboard',
+      retryWrites: true,
+      w: 'majority'
     });
 
     const Device = mainDB.model('Device', new mongoose.Schema({}, { strict: false }), 'devices');
@@ -690,7 +699,10 @@ async function getDailyConsumption(deviceId, deviceType, siteId) {
     // Get the site database name
     const mainDB = mongoose.createConnection(process.env.MONGO_URI, {
       dbName: 'iot_dashboard',
-      serverSelectionTimeoutMS: 30000
+      serverSelectionTimeoutMS: 30000,
+      authSource: 'iot_dashboard',
+      retryWrites: true,
+      w: 'majority'
     });
 
     const Site = mainDB.model('Site', new mongoose.Schema({}, { strict: false }), 'sites');
@@ -707,9 +719,12 @@ async function getDailyConsumption(deviceId, deviceType, siteId) {
     console.log(`📊 Site Database: ${siteDbName}`);
     
     // Connect to site database
-    const siteDB = mongoose.createConnection(process.env.MONGO_URI, {
+    const siteDB = mongoose.createConnection(MONGO_URI_site1, {
       dbName: siteDbName,
-      serverSelectionTimeoutMS: 30000
+      serverSelectionTimeoutMS: 30000,
+      authSource: 'iot_dashboard',
+      retryWrites: true,
+      w: 'majority'
     });
 
     // Get the collection model for the device type
@@ -898,7 +913,10 @@ async function updateDeviceLastReading(deviceId, value, unit, timestamp) {
   try {
     const mainDB = mongoose.createConnection(process.env.MONGO_URI, {
       dbName: 'iot_dashboard',
-      serverSelectionTimeoutMS: 30000
+      serverSelectionTimeoutMS: 30000,
+      authSource: 'iot_dashboard',
+      retryWrites: true,
+      w: 'majority'
     });
 
     const Device = mainDB.model('Device', new mongoose.Schema({}, { strict: false }), 'devices');

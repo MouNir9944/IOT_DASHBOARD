@@ -432,7 +432,7 @@ export default function DeviceDetailPage() {
     }
 
     const csvData = [];
-    csvData.push(['Date', 'Time', 'Flow Rate (L/min)', 'Pressure (bar)', 'Temperature (°C)']);
+    csvData.push(['Date', 'Time', 'Flow Rate (L/s)', 'Pressure (bar)', 'Temperature (°C)']);
     
     // Get the maximum length of all data arrays
     const maxLength = Math.max(
@@ -1912,7 +1912,7 @@ export default function DeviceDetailPage() {
                   <div className="text-2xl font-bold text-cyan-600">
                     {(realtimeData.flowRate || 0).toFixed(2)}
                   </div>
-                  <div className="text-xs text-gray-500">L/min</div>
+                  <div className="text-xs text-gray-500">L/s</div>
                 </div>
               )}
 
@@ -2180,7 +2180,7 @@ export default function DeviceDetailPage() {
                     onChange={(e) => setSelectedMetric(e.target.value as 'flowRate' | 'pressure' | 'temperature')}
                     className="px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm"
                   >
-                    <option value="flowRate">Flow Rate (L/min)</option>
+                    <option value="flowRate">Flow Rate (L/s)</option>
                     <option value="pressure">Pressure (bar)</option>
                     <option value="temperature">Temperature (°C)</option>
                   </select>
@@ -2218,10 +2218,10 @@ export default function DeviceDetailPage() {
                     if (currentValue !== null && currentValue !== undefined) {
                       const getMetricUnit = (metric: string) => {
                         switch(metric) {
-                          case 'flowRate': return 'L/min';
+                          case 'flowRate': return 'L/s';
                           case 'pressure': return 'bar';
                           case 'temperature': return '°C';
-                          default: return 'L/min';
+                          default: return 'L/s';
                         }
                       };
                       
@@ -2429,10 +2429,10 @@ export default function DeviceDetailPage() {
                 
                 const getMetricUnit = (metric: string) => {
                   switch(metric) {
-                    case 'flowRate': return 'L/min';
+                    case 'flowRate': return 'L/s';
                     case 'pressure': return 'bar';
                     case 'temperature': return '°C';
-                    default: return 'L/min';
+                    default: return 'L/s';
                   }
                 };
                 
@@ -2567,10 +2567,10 @@ export default function DeviceDetailPage() {
                     <span className="text-sm font-medium text-gray-700">Unit:</span>
                     <span className="text-sm text-gray-900 font-semibold">{(() => {
                       switch(selectedMetric) {
-                        case 'flowRate': return 'L/min';
+                        case 'flowRate': return 'L/s';
                         case 'pressure': return 'bar';
                         case 'temperature': return '°C';
-                        default: return 'L/min';
+                        default: return 'L/s';
                       }
                     })()}</span>
                   </div>

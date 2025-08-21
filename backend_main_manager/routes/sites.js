@@ -253,12 +253,9 @@ router.get('/', async (req, res) => {
       sites = await Site.find();
     } else if (role === 'admin') {
       // Admin can only see sites they created
-      if (createdBy) {
-        sites = await Site.find({ createdBy: createdBy });
-      } else {
-        // Fallback: show all sites (for backward compatibility)
+
         sites = await Site.find();
-      }
+      
     } else {
       // For other roles, show all sites (maintain existing behavior)
       sites = await Site.find();

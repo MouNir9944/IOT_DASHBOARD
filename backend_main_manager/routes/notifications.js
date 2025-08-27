@@ -2,6 +2,8 @@ import express from 'express';
 import Notification from '../models/Notification.js';
 import Site from '../models/Site.js';
 import User from '../models/User.js';
+import nodemailer from 'nodemailer';
+import mongoose from 'mongoose';
 
 const router = express.Router();
 
@@ -119,7 +121,42 @@ router.get('/', async (req, res) => {
     const query = {};
     
     if (userId) {
-      query.userId = userId;
+      // Support both email and ObjectId for userId
+      // First try to find user by email
+      try {
+        const user = await User.findOne({ email: userId });
+        if (user) {
+          query.userId = user._id;
+        } else {
+          // If not found by email, try as ObjectId
+          if (mongoose.Types.ObjectId.isValid(userId)) {
+            query.userId = userId;
+          } else {
+            // If neither email nor valid ObjectId, return empty results
+            return res.json({
+              notifications: [],
+              pagination: {
+                page: parseInt(page),
+                limit: parseInt(limit),
+                total: 0,
+                pages: 0
+              }
+            });
+          }
+        }
+      } catch (userError) {
+        console.error('Error finding user:', userError);
+        // If user lookup fails, return empty results
+        return res.json({
+          notifications: [],
+          pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total: 0,
+            pages: 0
+          }
+        });
+      }
     }
     
     if (status) {
@@ -174,7 +211,37 @@ router.get('/count', async (req, res) => {
     
     const query = {};
     if (userId) {
-      query.userId = userId;
+      // Support both email and ObjectId for userId
+      try {
+        const user = await User.findOne({ email: userId });
+        if (user) {
+          query.userId = user._id;
+        } else {
+          // If not found by email, try as ObjectId
+          if (mongoose.Types.ObjectId.isValid(userId)) {
+            query.userId = userId;
+          } else {
+            // If neither email nor valid ObjectId, return zero counts
+            return res.json({
+              new: 0,
+              read: 0,
+              acknowledged: 0,
+              resolved: 0,
+              total: 0
+            });
+          }
+        }
+      } catch (userError) {
+        console.error('Error finding user for count:', userError);
+        // If user lookup fails, return zero counts
+        return res.json({
+          new: 0,
+          read: 0,
+          acknowledged: 0,
+          resolved: 0,
+          total: 0
+        });
+      }
     }
     
     const counts = await Notification.aggregate([
@@ -200,12 +267,544 @@ router.get('/count', async (req, res) => {
       result.total += item.count;
     });
     
-    console.log(`📊 Notification count response: ${JSON.stringify(result)}`);
+    console.log(`📊 Notification count response for user ${userId}: ${JSON.stringify(result)}`);
     res.json(result);
   } catch (error) {
     console.error('❌ Error fetching notification counts:', error);
     res.status(500).json({ error: error.message });
   }
+});
+
+// GET /api/notifications/email-status - Check email configuration status
+router.get('/email-status', async (req, res) => {
+  try {
+    console.log('🔍 Checking email configuration status...');
+    
+    // Import notification service
+    const notificationService = await import('../services/notificationService.js');
+    
+    const status = {
+      smtpConfigured: !!notificationService.default.emailTransporter,
+      smtpUser: process.env.SMTP_USER ? 'Set' : 'Not set',
+      smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
+      smtpPort: process.env.SMTP_PORT || 587,
+      smtpFrom: process.env.SMTP_FROM || 'Not set'
+    };
+    
+    if (notificationService.emailTransporter) {
+      try {
+        await notificationService.emailTransporter.verify();
+        status.connectionTest = 'success';
+        status.message = 'Email transporter is configured and verified';
+      } catch (error) {
+        status.connectionTest = 'failed';
+        status.message = `Email transporter verification failed: ${error.message}`;
+      }
+    } else {
+      status.connectionTest = 'not_configured';
+      status.message = 'Email transporter not configured - SMTP credentials missing';
+    }
+    
+    res.json({
+      success: true,
+      status: status
+    });
+    
+  } catch (error) {
+    console.error('❌ Email status check failed:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Email status check failed',
+      error: error.message
+    });
+  }
+});
+
+// POST /api/notifications/test-email - Test email functionality
+router.post('/test-email', async (req, res) => {
+  try {
+    console.log('🧪 Testing email functionality...');
+    
+    // Import notification service
+    const notificationService = await import('../services/notificationService.js');
+    
+    // Check if email transporter is configured
+    if (!notificationService.default.emailTransporter) {
+      return res.status(500).json({
+        success: false,
+        message: 'Email transporter not configured',
+        error: 'SMTP credentials missing or invalid'
+      });
+    }
+    
+    // Find a user to send test email to
+    const User = await import('../models/User.js');
+    const user = await User.default.findOne({}, 'email name');
+    
+    if (!user) {
+      return res.status(400).json({
+        success: false,
+        message: 'No users found in database',
+        instructions: 'Please create a user first to test email functionality'
+      });
+    }
+    
+    // Create a test notification
+    const testNotification = {
+      title: '🧪 Email Test Notification',
+      message: 'This is a test email to verify SMTP configuration',
+      type: 'test',
+      priority: 'medium',
+      category: 'system',
+      deliveryPreferences: {
+        email: {
+          enabled: true,
+          lastSent: null
+        }
+      }
+    };
+    
+    console.log(`📧 Sending test email to: ${user.email}`);
+    
+    // Send test email
+    const emailResult = await notificationService.sendEmail(testNotification, user);
+    
+    if (emailResult) {
+      res.json({
+        success: true,
+        message: 'Test email sent successfully',
+        recipient: user.email,
+        notification: testNotification
+      });
+    } else {
+      res.status(500).json({
+        success: false,
+        message: 'Failed to send test email',
+        recipient: user.email
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Test email failed:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Test email failed',
+      error: error.message
+    });
+  }
+});
+
+// Test OVH SMTP configuration specifically
+router.get('/test-ovh-smtp', async (req, res) => {
+  try {
+    console.log('🧪 Testing OVH SMTP configuration specifically...');
+    
+    // OVH email configuration (exactly like your Python example)
+    const ovhConfig = {
+      host: "ssl0.ovh.net",
+      port: 465,  // SSL port
+      secure: true, // SSL
+      auth: {
+        user: "water-alert@servtelpro.com.tn",
+        pass: "Water1234"
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    };
+
+    console.log('📧 OVH SMTP Configuration:');
+    console.log(`   Host: ${ovhConfig.host}`);
+    console.log(`   Port: ${ovhConfig.port}`);
+    console.log(`   Secure: ${ovhConfig.secure}`);
+    console.log(`   User: ${ovhConfig.auth.user}`);
+    console.log(`   From: ${ovhConfig.auth.user}`);
+    console.log(`   To: vdbmvdbm3@gmail.com`);
+
+    try {
+      const transporter = nodemailer.createTransport(ovhConfig);
+      
+      console.log('📧 Verifying OVH connection...');
+      await transporter.verify();
+      console.log('✅ OVH SMTP connection verified successfully!');
+      
+      // Test sending email (exactly like your Python example)
+      const mailOptions = {
+        from: ovhConfig.auth.user, // water-alert@servtelpro.com.tn
+        to: "vdbmvdbm3@gmail.com", // Your test email
+        subject: "🧪 OVH SMTP Test - DigiSmart Manager",
+        text: "Hello, this is a test email from OVH SMTP!", // Plain text like Python
+        html: `
+          <h2>OVH SMTP Test Successful! 🎉</h2>
+          <p>Hello, this is a test email from OVH SMTP!</p>
+          <p><strong>Configuration:</strong></p>
+          <ul>
+            <li>Host: ${ovhConfig.host}</li>
+            <li>Port: ${ovhConfig.port} (SSL)</li>
+            <li>User: ${ovhConfig.auth.user}</li>
+            <li>From: ${ovhConfig.auth.user}</li>
+            <li>To: vdbmvdbm3@gmail.com</li>
+          </ul>
+          <p>Your notification system is now ready to send emails via OVH!</p>
+          <hr>
+          <p><em>Sent at: ${new Date().toLocaleString()}</em></p>
+        `
+      };
+      
+      const result = await transporter.sendMail(mailOptions);
+      console.log('✅ OVH test email sent successfully!');
+      console.log('📧 Message ID:', result.messageId);
+      
+      res.json({
+        success: true,
+        message: 'OVH SMTP test completed successfully (matching Python example)',
+        details: {
+          connectionVerified: true,
+          testEmailSent: true,
+          messageId: result.messageId,
+          configuration: {
+            host: ovhConfig.host,
+            port: ovhConfig.port,
+            secure: ovhConfig.secure,
+            user: ovhConfig.auth.user,
+            from: ovhConfig.auth.user,
+            to: "vdbmvdbm3@gmail.com"
+          },
+          pythonEquivalent: {
+            smtp_server: ovhConfig.host,
+            port: ovhConfig.port,
+            login: ovhConfig.auth.user,
+            password: "***hidden***",
+            sender_email: ovhConfig.auth.user,
+            receiver_email: "vdbmvdbm3@gmail.com"
+          }
+        }
+      });
+      
+    } catch (error) {
+      console.error('❌ OVH SMTP test failed:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'OVH SMTP test failed',
+        error: error.message,
+        details: {
+          code: error.code,
+          command: error.command,
+          response: error.response
+        },
+        configuration: ovhConfig
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ OVH SMTP test setup failed:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'OVH SMTP test setup failed',
+      error: error.message
+    });
+  }
+});
+
+// Test SMTP configuration directly (using OVH configuration like Python example)
+router.get('/test-smtp-direct', async (req, res) => {
+  try {
+    console.log('🧪 Testing OVH SMTP configuration directly...');
+    
+    // OVH email configuration (matching your Python example)
+    const ovhConfig = {
+      host: "ssl0.ovh.net",
+      port: 465,  // SSL port
+      secure: true, // SSL
+      auth: {
+        user: "water-alert@servtelpro.com.tn",
+        pass: "Water1234"
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    };
+
+    console.log('📧 OVH SMTP Configuration:');
+    console.log(`   Host: ${ovhConfig.host}`);
+    console.log(`   Port: ${ovhConfig.port}`);
+    console.log(`   Secure: ${ovhConfig.secure}`);
+    console.log(`   User: ${ovhConfig.auth.user}`);
+    console.log(`   From: ${ovhConfig.auth.user}`);
+    console.log(`   To: vdbmvdbm3@gmail.com`);
+
+    try {
+      console.log('📧 Creating OVH transporter...');
+      const transporter = nodemailer.createTransport(ovhConfig);
+      
+      console.log('📧 Verifying OVH connection...');
+      await transporter.verify();
+      console.log('✅ OVH SMTP connection verified successfully!');
+      
+      // Test sending a simple email (matching your Python example)
+      console.log('📧 Sending test email...');
+      const mailOptions = {
+        from: ovhConfig.auth.user, // water-alert@servtelpro.com.tn
+        to: "vdbmvdbm3@gmail.com", // Your test email
+        subject: "🧪 OVH SMTP Test - DigiSmart Manager",
+        html: `
+          <h2>OVH SMTP Test Successful! 🎉</h2>
+          <p>This is a test email from your DigiSmart Manager system using OVH SMTP.</p>
+          <p><strong>Configuration:</strong></p>
+          <ul>
+            <li>Host: ${ovhConfig.host}</li>
+            <li>Port: ${ovhConfig.port} (SSL)</li>
+            <li>User: ${ovhConfig.auth.user}</li>
+            <li>From: ${ovhConfig.auth.user}</li>
+            <li>To: vdbmvdbm3@gmail.com</li>
+          </ul>
+          <p>Your notification system is now ready to send emails via OVH!</p>
+          <hr>
+          <p><em>Sent at: ${new Date().toLocaleString()}</em></p>
+        `
+      };
+      
+      const result = await transporter.sendMail(mailOptions);
+      console.log('✅ OVH test email sent successfully!');
+      console.log('📧 Message ID:', result.messageId);
+      
+      res.json({
+        success: true,
+        message: 'OVH SMTP test completed successfully',
+        details: {
+          connectionVerified: true,
+          testEmailSent: true,
+          messageId: result.messageId,
+          configuration: {
+            host: ovhConfig.host,
+            port: ovhConfig.port,
+            secure: ovhConfig.secure,
+            user: ovhConfig.auth.user,
+            from: ovhConfig.auth.user,
+            to: "vdbmvdbm3@gmail.com"
+          }
+        }
+      });
+      
+    } catch (error) {
+      console.error('❌ OVH SMTP test failed:', error.message);
+      console.error('❌ Error details:', {
+        code: error.code,
+        command: error.command,
+        response: error.response
+      });
+      
+      res.status(500).json({
+        success: false,
+        message: 'OVH SMTP test failed',
+        error: error.message,
+        details: {
+          code: error.code,
+          command: error.command,
+          response: error.response
+        },
+        configuration: ovhConfig
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ OVH SMTP test setup failed:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'OVH SMTP test setup failed',
+      error: error.message
+    });
+  }
+});
+
+// Test SMTP with custom configuration
+router.post('/test-smtp-custom', async (req, res) => {
+  try {
+    console.log('🧪 Testing SMTP with custom configuration...');
+    
+    const { host, port, secure, user, pass, from, to } = req.body;
+    
+    // Validate required fields
+    if (!user || !pass) {
+      return res.status(400).json({
+        success: false,
+        message: 'User and password are required',
+        required: ['user', 'pass'],
+        optional: ['host', 'port', 'secure', 'from', 'to']
+      });
+    }
+    
+    // Use provided values or defaults
+    const smtpConfig = {
+      host: host || "ssl0.ovh.net",
+      port: parseInt(port) || 465,
+      secure: secure === 'true' || true,
+      auth: { user, pass },
+      tls: { rejectUnauthorized: false }
+    };
+
+    console.log('📧 Custom SMTP Configuration:');
+    console.log(`   Host: ${smtpConfig.host}`);
+    console.log(`   Port: ${smtpConfig.port}`);
+           console.log(`   Secure: ${smtpConfig.secure}`);
+    console.log(`   User: ${smtpConfig.auth.user}`);
+
+    try {
+      const transporter = nodemailer.createTransport(smtpConfig);
+      
+      console.log('📧 Verifying connection...');
+      await transporter.verify();
+      console.log('✅ SMTP connection verified successfully!');
+      
+      // Test sending email
+      const mailOptions = {
+        from: from || user,
+        to: to || "vdbmvdbm3@gmail.com",
+        subject: "🧪 Custom SMTP Test - DigiSmart Manager",
+        html: `
+          <h2>Custom SMTP Test Successful! 🎉</h2>
+          <p>This is a test email using custom SMTP configuration.</p>
+          <p><strong>Configuration:</strong></p>
+          <ul>
+            <li>Host: ${smtpConfig.host}</li>
+            <li>Port: ${smtpConfig.port} (${smtpConfig.secure ? 'SSL' : 'TLS'})</li>
+            <li>User: ${smtpConfig.auth.user}</li>
+            <li>From: ${from || user}</li>
+          </ul>
+          <p>Custom SMTP configuration is working!</p>
+          <hr>
+          <p><em>Sent at: ${new Date().toLocaleString()}</em></p>
+        `
+      };
+      
+      const result = await transporter.sendMail(mailOptions);
+      console.log('✅ Custom SMTP test email sent successfully!');
+      
+      res.json({
+        success: true,
+        message: 'Custom SMTP test completed successfully',
+        details: {
+          connectionVerified: true,
+          testEmailSent: true,
+          messageId: result.messageId,
+          configuration: smtpConfig
+        }
+      });
+      
+    } catch (error) {
+      console.error('❌ Custom SMTP test failed:', error.message);
+      res.status(500).json({
+        success: false,
+        message: 'Custom SMTP test failed',
+        error: error.message,
+        details: {
+          code: error.code,
+          command: error.command,
+          response: error.response
+        },
+        configuration: smtpConfig
+      });
+    }
+    
+  } catch (error) {
+    console.error('❌ Custom SMTP test setup failed:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Custom SMTP test setup failed',
+      error: error.message
+    });
+  }
+});
+
+// Get comprehensive SMTP status and configuration
+router.get('/smtp-status-comprehensive', async (req, res) => {
+  try {
+    console.log('🔍 Getting comprehensive SMTP status...');
+    
+    const status = {
+      environment: {
+        smtpUser: process.env.SMTP_USER ? 'Set' : 'Not set',
+        smtpPass: process.env.SMTP_PASS ? 'Set' : 'Not set',
+        smtpHost: process.env.SMTP_HOST || 'ssl0.ovh.net',
+        smtpPort: process.env.SMTP_PORT || 465,
+        smtpSecure: process.env.SMTP_SECURE === 'true' || true,
+        smtpFrom: process.env.SMTP_FROM || 'Not set'
+      },
+      notificationService: {
+        emailTransporterConfigured: false,
+        connectionTest: 'not_tested'
+      },
+      directSmtp: {
+        canCreateTransporter: false,
+        connectionTest: 'not_tested'
+      }
+    };
+    
+    // Test notification service
+    try {
+      const notificationService = await import('../services/notificationService.js');
+      status.notificationService.emailTransporterConfigured = !!notificationService.default.emailTransporter;
+      
+      if (notificationService.default.emailTransporter) {
+        try {
+          await notificationService.default.emailTransporter.verify();
+          status.notificationService.connectionTest = 'success';
+        } catch (error) {
+          status.notificationService.connectionTest = 'failed';
+          status.notificationService.error = error.message;
+        }
+      }
+    } catch (error) {
+      status.notificationService.error = error.message;
+    }
+    
+    // Test direct SMTP creation
+    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+      try {
+        const smtpConfig = {
+          host: process.env.SMTP_HOST || "ssl0.ovh.net",
+          port: parseInt(process.env.SMTP_PORT) || 465,
+          secure: process.env.SMTP_SECURE === 'true' || true,
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS
+          },
+          tls: { rejectUnauthorized: false }
+        };
+        
+        const transporter = nodemailer.createTransport(smtpConfig);
+        status.directSmtp.canCreateTransporter = true;
+        
+        try {
+          await transporter.verify();
+          status.directSmtp.connectionTest = 'success';
+        } catch (error) {
+          status.directSmtp.connectionTest = 'failed';
+          status.directSmtp.error = error.message;
+        }
+      } catch (error) {
+        status.directSmtp.error = error.message;
+      }
+    }
+    
+    res.json({
+      success: true,
+      status: status,
+      summary: {
+        environmentReady: !!(process.env.SMTP_USER && process.env.SMTP_PASS),
+        notificationServiceWorking: status.notificationService.connectionTest === 'success',
+        directSmtpWorking: status.directSmtp.connectionTest === 'success'
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Comprehensive SMTP status check failed:', error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Comprehensive SMTP status check failed',
+      error: error.message
+    });
+    }
 });
 
 // GET /api/notifications/:id - Get a specific notification
@@ -822,122 +1421,102 @@ router.post('/test-alert', async (req, res) => {
   }
 });
 
-// GET /api/notifications/email-status - Check email configuration status
-router.get('/email-status', async (req, res) => {
+// Test notification creation with user assignment
+router.post('/test-user-notification', async (req, res) => {
   try {
-    console.log('🔍 Checking email configuration status...');
+    console.log('🧪 Creating test notification with user assignment...');
     
-    // Import notification service
-    const NotificationService = await import('../services/notificationService.js');
-    const notificationService = new NotificationService.default();
+    const { userEmail, title, message, type = 'warning', priority = 'medium' } = req.body;
     
-    const status = {
-      smtpConfigured: !!notificationService.emailTransporter,
-      smtpUser: process.env.SMTP_USER ? 'Set' : 'Not set',
-      smtpHost: process.env.SMTP_HOST || 'smtp.gmail.com',
-      smtpPort: process.env.SMTP_PORT || 587,
-      smtpFrom: process.env.SMTP_FROM || 'Not set'
-    };
-    
-    if (notificationService.emailTransporter) {
-      try {
-        await notificationService.emailTransporter.verify();
-        status.connectionTest = 'success';
-        status.message = 'Email transporter is configured and verified';
-      } catch (error) {
-        status.connectionTest = 'failed';
-        status.message = `Email transporter verification failed: ${error.message}`;
-      }
-    } else {
-      status.connectionTest = 'not_configured';
-      status.message = 'Email transporter not configured - SMTP credentials missing';
-    }
-    
-    res.json({
-      success: true,
-      status: status
-    });
-    
-  } catch (error) {
-    console.error('❌ Email status check failed:', error.message);
-    res.status(500).json({
-      success: false,
-      message: 'Email status check failed',
-      error: error.message
-    });
-  }
-});
-
-// POST /api/notifications/test-email - Test email functionality
-router.post('/test-email', async (req, res) => {
-  try {
-    console.log('🧪 Testing email functionality...');
-    
-    // Import notification service
-    const NotificationService = await import('../services/notificationService.js');
-    const notificationService = new NotificationService.default();
-    
-    // Check if email transporter is configured
-    if (!notificationService.emailTransporter) {
-      return res.status(500).json({
+    if (!userEmail) {
+      return res.status(400).json({
         success: false,
-        message: 'Email transporter not configured',
-        error: 'SMTP credentials missing or invalid'
+        message: 'userEmail is required',
+        example: {
+          userEmail: 'user@example.com',
+          title: 'Test Alert',
+          message: 'This is a test notification',
+          type: 'warning',
+          priority: 'medium'
+        }
       });
     }
     
-    // Find a user to send test email to
-    const User = await import('../models/User.js');
-    const user = await User.default.findOne({}, 'email name');
-    
+    // Find the user by email
+    const user = await User.findOne({ email: userEmail });
     if (!user) {
       return res.status(400).json({
         success: false,
-        message: 'No users found in database',
-        instructions: 'Please create a user first to test email functionality'
+        message: 'User not found',
+        searchedEmail: userEmail,
+        instructions: 'Please provide a valid user email that exists in the database'
       });
     }
     
-    // Create a test notification
-    const testNotification = {
-      title: '🧪 Email Test Notification',
-      message: 'This is a test email to verify SMTP configuration',
-      type: 'test',
-      priority: 'medium',
+    console.log(`📧 Found user: ${user.email} (${user._id})`);
+    
+    // Create a test notification assigned to this user
+    const testNotification = new Notification({
+      title: title || 'Test User Notification',
+      message: message || 'This is a test notification assigned to a specific user',
+      type: type,
+      priority: priority,
       category: 'system',
+      status: 'new',
+      userId: user._id, // Assign to specific user
       deliveryPreferences: {
-        email: {
-          enabled: true,
-          lastSent: null
-        }
+        email: { enabled: true, frequency: 'immediate', lastSent: null }
+      },
+      metadata: {
+        siteName: 'Test Site',
+        deviceName: 'Test Device',
+        parameter: 'testParameter',
+        currentValue: 100,
+        threshold: 50,
+        condition: 'above',
+        unit: 'units'
       }
-    };
+    });
     
-    console.log(`📧 Sending test email to: ${user.email}`);
+    const savedNotification = await testNotification.save();
+    console.log('✅ Test notification created successfully');
     
-    // Send test email
-    const emailResult = await notificationService.sendEmail(testNotification, user);
+    // Test the filtering by fetching notifications for this user
+    const userNotifications = await Notification.find({ userId: user._id });
+    const allNotifications = await Notification.find({});
     
-    if (emailResult) {
-      res.json({
-        success: true,
-        message: 'Test email sent successfully',
-        recipient: user.email,
-        notification: testNotification
-      });
-    } else {
-      res.status(500).json({
-        success: false,
-        message: 'Failed to send test email',
-        recipient: user.email
-      });
-    }
+    res.json({
+      success: true,
+      message: 'Test notification with user assignment created successfully',
+      testResults: {
+        userFound: true,
+        userEmail: user.email,
+        userId: user._id,
+        notificationCreated: true,
+        notificationId: savedNotification._id,
+        userSpecificCount: userNotifications.length,
+        totalNotificationsInSystem: allNotifications.length,
+        filteringTest: {
+          userNotifications: userNotifications.map(n => ({
+            id: n._id,
+            title: n.title,
+            userId: n.userId
+          })),
+          allNotifications: allNotifications.map(n => ({
+            id: n._id,
+            title: n.title,
+            userId: n.userId
+          }))
+        }
+      },
+      instructions: 'Now test the filtering by calling GET /api/notifications?userId=' + user.email
+    });
     
   } catch (error) {
-    console.error('❌ Test email failed:', error.message);
+    console.error('❌ Test notification creation failed:', error.message);
     res.status(500).json({
       success: false,
-      message: 'Test email failed',
+      message: 'Test notification creation failed',
       error: error.message
     });
   }

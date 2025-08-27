@@ -239,32 +239,60 @@ router.delete('/deletesite/:id', async (req, res) => {
     });
   }
 });*/
-// Get all sites - superadmin gets all sites, admin gets only sites created by them
+// Get all sites - superadmin gets all sites, admin gets sites assigned to them
 router.get('/', async (req, res) => {
   try {
-    console.log(`📊 GET /api/sites - IP: ${req.ip}, Role: ${req.query.role || 'none'}, CreatedBy: ${req.query.createdBy || 'none'}`);
+    console.log(`📊 GET /api/sites - IP: ${req.ip}, Role: ${req.query.role || 'none'}, UserId: ${req.query.userId || 'none'}`);
     
     const role = req.query.role;
-    const createdBy = req.query.createdBy; // User ID of the admin creating the request
+    const userId = req.query.userId; // User ID of the admin creating the request
     
     let sites;
     if (role === 'superadmin') {
-      // Superadmin can see all sites
-      sites = await Site.find();
+      // Superadmin can see all sites with devices populated
+      sites = await Site.find().populate({
+        path: 'devices',
+        select: 'deviceId name type status description'
+      });
     } else if (role === 'admin') {
-      // Admin can only see sites they created
-      if (createdBy) {
-        sites = await Site.find({ createdBy: createdBy });
+      // Admin can see sites assigned to them (in their sites array)
+      if (userId) {
+        const user = await User.findById(userId);
+        if (user && user.sites && user.sites.length > 0) {
+          sites = await Site.find({ _id: { $in: user.sites } }).populate({
+            path: 'devices',
+            select: 'deviceId name type status description'
+          });
+        } else {
+          sites = [];
+        }
       } else {
         // Fallback: show all sites (for backward compatibility)
-        sites = await Site.find();
+        sites = await Site.find().populate({
+          path: 'devices',
+          select: 'deviceId name type status description'
+        });
       }
     } else {
-      // For other roles, show all sites (maintain existing behavior)
-      sites = await Site.find();
+      // For other roles or no role specified, show all sites with devices populated
+      // This ensures backward compatibility for existing API calls
+      sites = await Site.find().populate({
+        path: 'devices',
+        select: 'deviceId name type status description'
+      });
     }
     
-    console.log(`✅ GET /api/sites - Returning ${sites.length} sites`);
+    console.log(`✅ GET /api/sites - Returning ${sites.length} sites for role: ${role || 'none'}`);
+    
+    // Debug: Check if devices are populated
+    if (sites.length > 0) {
+      const firstSite = sites[0];
+      console.log(`🔍 First site devices: ${firstSite.devices?.length || 0} devices`);
+      if (firstSite.devices && firstSite.devices.length > 0) {
+        console.log(`🔍 First device: ${firstSite.devices[0].name} (${firstSite.devices[0].type})`);
+      }
+    }
+    
     res.json(sites);
   } catch (error) {
     console.error(`❌ GET /api/sites - Error: ${error.message}`);
@@ -272,15 +300,66 @@ router.get('/', async (req, res) => {
   }
 });
 
-// GET /api/sites/:id - get a single site by ID
+// GET /api/sites/:id - get a single site by ID with role-based access control
 router.get('/:id', async (req, res) => {
   try {
-    const site = await Site.findById(req.params.id).populate('devices');
+    console.log(`📊 GET /api/sites/${req.params.id} - IP: ${req.ip}, Role: ${req.query.role || 'none'}, UserId: ${req.query.userId || 'none'}`);
+    
+    const role = req.query.role;
+    const userId = req.query.userId;
+    const siteId = req.params.id;
+    
+    let site;
+    if (role === 'superadmin') {
+      // Superadmin can see any site
+      site = await Site.findById(siteId).populate({
+        path: 'devices',
+        select: 'deviceId name type status description'
+      });
+    } else if (role === 'admin') {
+      // Admin can only see sites assigned to them
+      if (userId) {
+        const user = await User.findById(userId);
+        if (user && user.sites && user.sites.includes(siteId)) {
+          site = await Site.findById(siteId).populate({
+            path: 'devices',
+            select: 'deviceId name type status description'
+          });
+        } else {
+          return res.status(403).json({ error: 'Access denied: Site not assigned to this admin' });
+        }
+      } else {
+        return res.status(400).json({ error: 'UserId required for admin access' });
+      }
+    } else {
+      // For other roles, check if they have access to this site
+      if (userId) {
+        const user = await User.findById(userId);
+        if (user && user.sites && user.sites.includes(siteId)) {
+          site = await Site.findById(siteId).populate({
+            path: 'devices',
+            select: 'deviceId name type status description'
+          });
+        } else {
+          return res.status(403).json({ error: 'Access denied: Site not assigned to this user' });
+        }
+      } else {
+        // Fallback: allow access (for backward compatibility)
+        site = await Site.findById(siteId).populate({
+          path: 'devices',
+          select: 'deviceId name type status description'
+        });
+      }
+    }
+    
     if (!site) {
       return res.status(404).json({ error: 'Site not found' });
     }
+    
+    console.log(`✅ GET /api/sites/${siteId} - Site found with ${site.devices?.length || 0} devices`);
     res.json(site);
   } catch (error) {
+    console.error(`❌ GET /api/sites/${req.params.id} - Error: ${error.message}`);
     res.status(500).json({ error: error.message });
   }
 });
@@ -293,7 +372,10 @@ router.get('/user/:userId', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
     // user.sites is an array of ObjectIds
-    const sites = await Site.find({ _id: { $in: user.sites || [] } }).populate('devices');
+    const sites = await Site.find({ _id: { $in: user.sites || [] } }).populate({
+      path: 'devices',
+      select: 'deviceId name type status description'
+    });
     res.json(sites);
   } catch (error) {
     res.status(500).json({ error: error.message });

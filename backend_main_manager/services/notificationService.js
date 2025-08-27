@@ -5,37 +5,63 @@ import User from '../models/User.js';
 
 class NotificationService {
   constructor() {
-    // Email configuration - only create if SMTP credentials are available
-    if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-      this.emailTransporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST ,
-        port: process.env.SMTP_PORT ,
-        secure: false,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS
-        },
-        tls: {
-          rejectUnauthorized: false
-        }
-      });
-      
-      // Test the connection
-      this.emailTransporter.verify()
-        .then(() => {
-          console.log('✅ Email transporter configured and verified');
-        })
-        .catch((error) => {
-          console.error('❌ Email transporter verification failed:', error.message);
-          this.emailTransporter = null;
-        });
-    } else {
-      this.emailTransporter = null;
-      console.log('⚠️ Email transporter not configured - SMTP credentials missing');
+    this.emailTransporter = null;
+    this.twilioClient = null;
+  }
+
+  // Initialize email transporter when needed
+  async initializeEmailTransporter() {
+    if (this.emailTransporter) {
+      return this.emailTransporter;
     }
 
-    // SMS removed per requirement
-    this.twilioClient = null;
+    // OVH email configuration (matching your Python example)
+    const ovhConfig = {
+      host: "ssl0.ovh.net",
+      port: 465,  // SSL port
+      secure: true, // SSL
+      auth: {
+        user: "water-alert@servtelpro.com.tn",
+        pass: "Water1234"
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    };
+
+    // Use OVH configuration by default, or environment variables if available
+    const smtpConfig = process.env.SMTP_USER && process.env.SMTP_PASS ? {
+      host: process.env.SMTP_HOST || "ssl0.ovh.net",
+      port: parseInt(process.env.SMTP_PORT) || 465,
+      secure: process.env.SMTP_SECURE === 'true' || true,
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    } : ovhConfig;
+
+    console.log('📧 Using SMTP configuration:', {
+      host: smtpConfig.host,
+      port: smtpConfig.port,
+      secure: smtpConfig.secure,
+      user: smtpConfig.auth.user
+    });
+
+    this.emailTransporter = nodemailer.createTransport(smtpConfig);
+    
+    try {
+      // Test the connection synchronously
+      await this.emailTransporter.verify();
+      console.log('✅ Email transporter configured and verified');
+      return this.emailTransporter;
+    } catch (error) {
+      console.error('❌ Email transporter verification failed:', error.message);
+      this.emailTransporter = null;
+      return null;
+    }
   }
 
   // Send email notification
@@ -46,8 +72,11 @@ class NotificationService {
         return false;
       }
 
+      // Initialize email transporter if needed
+      const transporter = await this.initializeEmailTransporter();
+      
       // Check if email transporter is configured
-      if (!this.emailTransporter) {
+      if (!transporter) {
         console.log('❌ Email transporter not configured. Please set SMTP_USER and SMTP_PASS environment variables');
         console.log('📧 Email would have been sent to:', user.email);
         console.log('📧 Subject:', `[${notification.priority.toUpperCase()}] ${notification.title}`);
@@ -55,14 +84,14 @@ class NotificationService {
       }
 
       const mailOptions = {
-        from: process.env.SMTP_FROM || 'noreply@iotdashboard.com',
+        from: process.env.SMTP_FROM || "water-alert@servtelpro.com.tn",
         to: user.email,
         subject: `[${notification.priority.toUpperCase()}] ${notification.title}`,
         html: this.generateEmailTemplate(notification, user)
       };
 
       console.log(`📧 Attempting to send email to: ${user.email}`);
-      await this.emailTransporter.sendMail(mailOptions);
+      await transporter.sendMail(mailOptions);
       
       // Update last sent timestamp if notification is a Mongoose model
       if (notification.deliveryPreferences?.email) {

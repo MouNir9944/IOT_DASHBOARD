@@ -1,0 +1,24 @@
+# Environment Configuration Example for DigiSmart Manager
+# Copy this file to .env and fill in your actual values
+
+# SMTP Configuration for Email Notifications
+# OVH SMTP Configuration (or your preferred SMTP provider)
+SMTP_HOST=ssl0.ovh.net
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=water-alert@servtelpro.com.tn
+SMTP_PASS=Water1234
+SMTP_FROM=water-alert@servtelpro.com.tn
+
+# Database Configuration
+MONGODB_URI=mongodb://localhost:27017/iot_dashboard
+
+# Server Configuration
+PORT=8001
+NODE_ENV=development
+
+# JWT Secret (for authentication)
+JWT_SECRET=your-super-secret-jwt-key-here
+
+# CORS Configuration
+CORS_ORIGIN=http://localhost:8000

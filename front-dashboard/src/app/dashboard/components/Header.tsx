@@ -13,9 +13,14 @@ import {
   ExclamationCircleIcon,
   InformationCircleIcon,
   BuildingOfficeIcon,
-  DevicePhoneMobileIcon
+  DevicePhoneMobileIcon,
+  SunIcon,
+  MoonIcon,
+  LanguageIcon
 } from '@heroicons/react/24/outline';
 import Logo from './Logo';
+import { useTheme } from '../../contexts/ThemeContext';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 interface User {
   name?: string | null;
@@ -60,12 +65,15 @@ const API_URL = API_CONFIG.BACKEND_URL;
 
 export default function Header({ user, onSidebarToggle }: HeaderProps) {
   const router = useRouter();
+  const { theme, toggleTheme } = useTheme();
+  const { currentLanguage, setLanguage, t } = useLanguage();
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [notificationCount, setNotificationCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const eventSourceRef = useRef<EventSource | null>(null);
+  const [showLanguageMenu, setShowLanguageMenu] = useState(false);
 
   // Validate configuration on component mount
   useEffect(() => {
@@ -77,7 +85,8 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
   const fetchNotifications = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`${API_URL}/api/notifications?status=new&limit=5`);
+      // Filter notifications by current user ID
+      const response = await fetch(`${API_URL}/api/notifications?status=new&limit=5&userId=${user.email}`);
       if (response.ok) {
         const data = await response.json();
         setNotifications(data.notifications);
@@ -91,7 +100,8 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
 
   const fetchNotificationCount = async () => {
     try {
-      const response = await fetch(`${API_URL}/api/notifications/count`);
+      // Filter notification count by current user ID
+      const response = await fetch(`${API_URL}/api/notifications/count?userId=${user.email}`);
       if (response.ok) {
         const data = await response.json();
         setNotificationCount(data.new);
@@ -153,22 +163,31 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
           console.log('📢 Received SSE notification update:', data);
           
           if (data.type === 'notification_created') {
-            // Refresh to fetch full details (site/device/metadata)
-            refreshNotifications();
-            // Optimistically update count
-            setNotificationCount(prev => prev + 1);
-            
-            // Show browser notification if permission granted
-            if (Notification.permission === 'granted') {
-              new Notification(data.notification.title, {
-                body: data.notification.message,
-                icon: '/favicon.ico'
-              });
+            // Only process notifications assigned to current user
+            if (data.userId === user.email) {
+              // Refresh to fetch full details (site/device/metadata)
+              refreshNotifications();
+              // Optimistically update count
+              setNotificationCount(prev => prev + 1);
+              
+              // Show browser notification if permission granted
+              if (Notification.permission === 'granted') {
+                new Notification(data.notification.title, {
+                  body: data.notification.message,
+                  icon: '/favicon.ico'
+                });
+              }
+            } else {
+              console.log('📢 Ignoring notification for different user:', data.userId);
             }
           } else if (data.type === 'notification_count_update') {
-            // Update count with the actual count from server
-            setNotificationCount(data.count);
-            console.log('📊 Updated notification count:', data.count);
+            // Only update count if it's for the current user
+            if (data.userId === user.email) {
+              setNotificationCount(data.count);
+              console.log('📊 Updated notification count:', data.count);
+            } else {
+              console.log('📊 Ignoring count update for different user:', data.userId);
+            }
           } else if (data.type === 'connected') {
             console.log('🔌 SSE connected:', data.message);
           } else if (data.type === 'heartbeat') {
@@ -202,6 +221,8 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
     }
   };
 
+
+
   useEffect(() => {
     // Initial fetch
     refreshNotifications();
@@ -224,6 +245,20 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
       }
     };
   }, []);
+
+  // Close language menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showLanguageMenu && !(event.target as Element).closest('.language-selector')) {
+        setShowLanguageMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showLanguageMenu]);
 
   const handleLogout = async () => {
     await signOut({ callbackUrl: '/login' });
@@ -248,9 +283,9 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
     const now = new Date();
     const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
     
-    if (diffInMinutes < 1) return 'Just now';
-    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
-    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}h ago`;
+    if (diffInMinutes < 1) return t('time.justNow');
+    if (diffInMinutes < 60) return `${diffInMinutes}${t('time.minutesAgo')}`;
+    if (diffInMinutes < 1440) return `${Math.floor(diffInMinutes / 60)}${t('time.hoursAgo')}`;
     return date.toLocaleDateString();
   };
 
@@ -265,22 +300,22 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
   };
 
   return (
-    <header className="bg-white shadow-sm border-b border-gray-200 px-3 sm:px-4 md:px-6 py-3 sm:py-4 z-10">
+    <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700 px-3 sm:px-4 md:px-6 py-3 sm:py-4 z-10">
       <div className="flex items-center justify-between">
         {/* Left side */}
         <div className="flex items-center flex-1 min-w-0">
           {/* Mobile sidebar toggle button */}
           <button
             onClick={onSidebarToggle}
-            className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 mr-3"
+            className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 mr-3"
           >
             <Bars3Icon className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
-                     <Logo size="lg" className="text-blue-600" />
+            <Logo size="lg" className="mr-0" />
             <div className="flex-1 min-w-0">
             <div className="flex flex-col items-start gap-2">
-              <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 truncate">DigiSmart Manager</h1>
-              <p className="text-xs sm:text-sm text-gray-600 truncate">Welcome back, {user.name || user.email}</p>
+              <h1 className="hidden sm:block text-lg sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100 truncate">{t('dashboard.title')}</h1>
+              <p className="hidden sm:block text-xs sm:text-sm text-gray-600 dark:text-gray-400 truncate">{t('header.welcome')}, {user.name || user.email}</p>
             </div>
           </div>
         </div>
@@ -291,7 +326,7 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
           <div className="relative">
             <button
               onClick={() => setShowNotifications(!showNotifications)}
-              className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              className="relative p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
             >
               <BellIcon className="w-5 h-5 sm:w-6 sm:h-6" />
               {notificationCount > 0 && (
@@ -301,24 +336,22 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
               )}
             </button>
 
-            
-
             {/* Notifications Dropdown */}
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                <div className="p-3 sm:p-4 border-b border-gray-200">
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-900">Notifications</h3>
+              <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+                <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700">
+                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">{t('header.notifications')}</h3>
                 </div>
                 <div className="max-h-64 sm:max-h-96 overflow-y-auto">
                   {loading ? (
                     <div className="p-4 text-center">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
-                      <p className="mt-2 text-sm text-gray-600">Loading...</p>
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">{t('common.loading')}</p>
                     </div>
                   ) : notifications.length === 0 ? (
                     <div className="p-4 text-center">
                       <BellIcon className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-600">No new notifications</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">{t('header.noNotifications')}</p>
                     </div>
                   ) : (
                     notifications.map((notification) => {
@@ -338,7 +371,7 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
                       return (
                       <div
                         key={notification._id}
-                        className={`p-3 sm:p-4 border-b border-gray-100 hover:bg-gray-50 ${
+                        className={`p-3 sm:p-4 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 ${
                           notification.type === 'error' || notification.type === 'critical' ? 'border-l-4 border-l-red-500' :
                           notification.type === 'warning' ? 'border-l-4 border-l-yellow-500' :
                           notification.type === 'success' ? 'border-l-4 border-l-green-500' :
@@ -350,14 +383,14 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
                             {getTypeIcon(notification.type)}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="text-xs sm:text-sm font-medium text-gray-900 truncate">
+                            <h4 className="text-xs sm:text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                               {notification.title}
                             </h4>
-                            <p className="text-xs sm:text-sm text-gray-600 mt-1 line-clamp-2">
+                            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
                               {notification.message}
                             </p>
                             {(siteName || deviceName) && (
-                              <div className="mt-2 flex items-center gap-3 text-[11px] sm:text-xs text-gray-600">
+                              <div className="mt-2 flex items-center gap-3 text-[11px] sm:text-xs text-gray-600 dark:text-gray-400">
                                 {siteName && (
                                   <span className="inline-flex items-center gap-1">
                                     <BuildingOfficeIcon className="w-3 h-3" /> {siteName}
@@ -371,16 +404,16 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
                               </div>
                             )}
                               {(parameter || value !== undefined || threshold !== undefined) && (
-                              <div className="mt-1 text-[11px] sm:text-xs text-gray-700">
+                              <div className="mt-1 text-[11px] sm:text-xs text-gray-700 dark:text-gray-300">
                                 {parameter && (
-                                  <span className="font-medium">{isConsumption ? 'Daily Consumption' : parameter}:</span>
+                                  <span className="font-medium">{isConsumption ? t('analytics.dailyConsumption') : parameter}:</span>
                                 )} {formattedValue !== undefined ? `${formattedValue}${unit}` : ''}
                                 {threshold !== undefined && (
-                                    <span className="ml-2 text-gray-500">({condition || ''} {formattedThreshold}{unit})</span>
+                                    <span className="ml-2 text-gray-500 dark:text-gray-400">({condition || ''} {formattedThreshold}{unit})</span>
                                 )}
                               </div>
                             )}
-                            <p className="text-xs text-gray-500 mt-2" title={formatDateTime(notification.createdAt)}>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2" title={formatDateTime(notification.createdAt)}>
                               {formatTime(notification.createdAt)} • {formatDateTime(notification.createdAt)}
                             </p>
                           </div>
@@ -390,16 +423,85 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
                     })
                   )}
                 </div>
-                <div className="p-3 sm:p-4 border-t border-gray-200">
+                <div className="p-3 sm:p-4 border-t border-gray-200 dark:border-gray-700">
                   <button 
                     onClick={() => {
                       setShowNotifications(false);
                       // Navigate to notifications page using Next.js router
                       router.push('/dashboard/notifications');
                     }}
-                    className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 font-medium"
+                    className="text-xs sm:text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-medium"
                   >
-                    View all notifications
+                    {t('header.viewAllNotifications')}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Theme Toggle Button */}
+          <button
+            onClick={toggleTheme}
+            className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+            title={theme === 'light' ? t('header.switchToDark') : t('header.switchToLight')}
+          >
+            {theme === 'light' ? (
+              <MoonIcon className="w-5 h-5 sm:w-6 sm:h-6" />
+            ) : (
+              <SunIcon className="w-5 h-5 sm:w-6 sm:h-6" />
+            )}
+          </button>
+
+          {/* Language Selector */}
+          <div className="relative language-selector">
+            <button
+              onClick={() => setShowLanguageMenu(!showLanguageMenu)}
+              className="p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              title={t('header.switchLanguage')}
+            >
+              <div className="flex items-center space-x-1">
+                <LanguageIcon className="w-4 h-4" />
+                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  {currentLanguage === 'en' ? 'EN' : 'FR'}
+                </span>
+              </div>
+            </button>
+
+            {/* Language Dropdown */}
+            {showLanguageMenu && (
+              <div className="absolute right-0 mt-2 w-32 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
+                <div className="py-1">
+                  <button
+                    onClick={() => {
+                      setLanguage('en');
+                      setShowLanguageMenu(false);
+                      // TODO: Implement language change logic
+                      console.log('Language changed to English');
+                    }}
+                    className={`flex items-center w-full px-3 py-2 text-sm ${
+                      currentLanguage === 'en' 
+                        ? 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/20' 
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <span className="mr-2">🇺🇸</span>
+                    English
+                  </button>
+                  <button
+                    onClick={() => {
+                      setLanguage('fr');
+                      setShowLanguageMenu(false);
+                      // TODO: Implement language change logic
+                      console.log('Language changed to French');
+                    }}
+                    className={`flex items-center w-full px-3 py-2 text-sm ${
+                      currentLanguage === 'fr' 
+                        ? 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/20' 
+                        : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+                    }`}
+                  >
+                    <span className="mr-2">🇫🇷</span>
+                    Français
                   </button>
                 </div>
               </div>
@@ -410,25 +512,25 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
           <div className="relative">
             <button
               onClick={() => setShowUserMenu(!showUserMenu)}
-              className="flex items-center space-x-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+              className="flex items-center space-x-2 p-2 text-gray-600 hover:text-gray-900 hover:bg-gray-100 dark:text-gray-300 dark:hover:text-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
             >
               <UserCircleIcon className="w-6 h-6 sm:w-8 sm:h-8" />
               <div className="text-left hidden sm:block">
-                <p className="text-xs sm:text-sm font-medium text-gray-900 truncate">{user.name}</p>
-                <p className="text-xs text-gray-500 truncate">{user.role}</p>
+                <p className="text-xs sm:text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{user.name}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user.role}</p>
               </div>
             </button>
 
             {/* User Dropdown */}
             {showUserMenu && (
-              <div className="absolute right-0 mt-2 w-40 sm:w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+              <div className="absolute right-0 mt-2 w-40 sm:w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
                 <div className="py-1">
                   <button
                     onClick={handleLogout}
-                    className="flex items-center w-full px-3 sm:px-4 py-2 text-xs sm:text-sm text-red-600 hover:bg-red-50"
+                    className="flex items-center w-full px-3 sm:px-4 py-2 text-xs sm:text-sm text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
                   >
                     <ArrowRightOnRectangleIcon className="w-4 h-4 mr-2 sm:mr-3" />
-                    Sign out
+                    {t('header.signOut')}
                   </button>
                 </div>
               </div>

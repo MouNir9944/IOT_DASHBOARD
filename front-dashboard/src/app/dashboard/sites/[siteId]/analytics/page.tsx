@@ -1,10 +1,12 @@
 'use client';
+// Water Analytics Page - Shows water consumption data for a specific site
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeftIcon, BoltIcon, SunIcon, CloudIcon, FireIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import { ArrowLeftIcon, CloudIcon, ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import { useEffect, useState } from 'react';
 import DashboardLayout from '../../../components/DashboardLayout';
 import { BarChart, PieChart } from '@mui/x-charts';
 import { useSession } from 'next-auth/react';
+import { useLanguage } from '../../../../../contexts/LanguageContext';
 import { DatePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import Typography from '@mui/material/Typography';
@@ -19,25 +21,24 @@ import Checkbox from '@mui/material/Checkbox';
 import ListItemText from '@mui/material/ListItemText';
 import OutlinedInput from '@mui/material/OutlinedInput';
 
-const metricOptions = [
-  { value: 'energy', label: 'Energy', icon: BoltIcon },
-  { value: 'solar', label: 'Solar', icon: SunIcon },
-  { value: 'water', label: 'Water', icon: CloudIcon },
-  { value: 'gas', label: 'Gas', icon: FireIcon },
-];
-const periodOptions = [
-  { value: 'month', label: 'Monthly' },
-  { value: 'year', label: 'Yearly' },
-  { value: 'custom', label: 'Custom' },
-];
-
 export default function SiteAnalyticsPage() {
   const router = useRouter();
   const params = useParams();
+  const { t } = useLanguage();
   const siteId = params?.siteId as string;
   const { data: session } = useSession();
+  
+  const metricOptions = [
+    { value: 'water', label: t('devices.water'), icon: CloudIcon },
+  ];
+  const periodOptions = [
+    { value: 'month', label: t('analytics.monthlyConsumption') },
+    { value: 'year', label: t('analytics.yearlyConsumption') },
+    { value: 'custom', label: t('common.custom') },
+  ];
+  
   const [siteName, setSiteName] = useState<string>('');
-  const [metric, setMetric] = useState('energy');
+  const [metric, setMetric] = useState('water');
   const [period, setPeriod] = useState('month');
   const [customFrom, setCustomFrom] = useState<Date | null>(null);
   const [customTo, setCustomTo] = useState<Date | null>(null);
@@ -77,7 +78,7 @@ export default function SiteAnalyticsPage() {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `${siteName}_${metric}_bar_chart_${period}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `${siteName}_water_bar_chart_${period}_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -112,7 +113,7 @@ export default function SiteAnalyticsPage() {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `${siteName}_${metric}_pie_chart_${period}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `${siteName}_water_pie_chart_${period}_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -228,27 +229,33 @@ export default function SiteAnalyticsPage() {
     <DashboardLayout user={session?.user || {}}>
       <Box sx={{ p: { xs: 1, sm: 2, md: 4 }, maxWidth: '1100px', mx: 'auto' }}>
         <div className="flex items-center mb-6">
-          <button
-            onClick={() => router.push(`/dashboard/sites/${siteId}`)}
-            className="flex items-center text-blue-600 hover:text-blue-800 font-medium mr-4"
-          >
-            <ArrowLeftIcon className="w-5 h-5 mr-1" />
-            Back to Site
-          </button>
-          <h1 className="text-2xl font-bold text-gray-900">Analytics for <span className="text-blue-700">{siteName}</span></h1>
+                      <button
+              onClick={() => router.push(`/dashboard/sites/${siteId}`)}
+              className="flex items-center text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium mr-4"
+            >
+              <ArrowLeftIcon className="w-5 h-5 mr-1" />
+              {t('common.back')} {t('sites.title')}
+            </button>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{t('analytics.title')} {t('devices.water')} {t('common.for')} <span className="text-blue-700 dark:text-blue-400">{siteName}</span></h1>
         </div>
-        <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 }, mb: 4, borderRadius: 3 }}>
+        <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 }, mb: 4, borderRadius: 3, bgcolor: 'background.paper' }}>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-end' }}>
             <FormControl sx={{ minWidth: 200 }}>
-              <InputLabel>Devices</InputLabel>
+              <InputLabel sx={{ color: 'text.primary' }}>{t('devices.title')}</InputLabel>
               <Select
                 multiple
                 value={selectedDevices}
                 onChange={e => setSelectedDevices(typeof e.target.value === 'string' ? e.target.value.split(',') : e.target.value)}
-                    input={<OutlinedInput label="Devices" />}
+                    input={<OutlinedInput label={t('devices.title')} sx={{ color: 'text.primary' }} />}
                 renderValue={selected =>
                   deviceOptions.filter(s => selected.includes(s.deviceId)).map(s => s.name).join(', ')
                 }
+                sx={{
+                  '& .MuiSelect-icon': { color: 'text.primary' },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main' },
+                }}
               >
                 {deviceOptions.map(device => (
                   <MenuItem key={device.deviceId} value={device.deviceId}>
@@ -259,16 +266,35 @@ export default function SiteAnalyticsPage() {
               </Select>
             </FormControl>
             <FormControl sx={{ minWidth: 140 }}>
-              <InputLabel>Metric</InputLabel>
-              <Select value={metric} label="Metric" onChange={e => setMetric(e.target.value)}>
+              <InputLabel sx={{ color: 'text.primary' }}>{t('devices.water')} {t('common.metric')}</InputLabel>
+              <Select 
+                value={metric} 
+                label={t('devices.water') + ' ' + t('common.metric')} 
+                onChange={e => setMetric(e.target.value)}
+                sx={{
+                  '& .MuiSelect-icon': { color: 'text.primary' },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main' },
+                }}
+              >
                 {metricOptions.map(opt => (
                   <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
                 ))}
               </Select>
             </FormControl>
             <FormControl sx={{ minWidth: 140 }}>
-              <InputLabel>Period</InputLabel>
-              <Select value={period} label="Period" onChange={e => setPeriod(e.target.value)}>
+              <InputLabel sx={{ color: 'text.primary' }}>{t('common.period')}</InputLabel>
+              <Select 
+                value={period} 
+                label={t('common.period')} 
+                onChange={e => setPeriod(e.target.value)}
+                sx={{
+                  '& .MuiSelect-icon': { color: 'text.primary' },
+                  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main' },
+                }}
+              >
                 {periodOptions.map(opt => (
                   <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
                 ))}
@@ -280,13 +306,35 @@ export default function SiteAnalyticsPage() {
                   label="From"
                   value={customFrom}
                   onChange={setCustomFrom}
-                  slotProps={{ textField: { size: 'small', sx: { minWidth: 140 } } }}
+                  slotProps={{ 
+                    textField: { 
+                      size: 'small', 
+                      sx: { 
+                        minWidth: 140,
+                        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+                        '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main' },
+                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'primary.main' },
+                        '& .MuiInputLabel-root': { color: 'text.primary' },
+                        '& .MuiInputBase-input': { color: 'text.primary' },
+                      } 
+                    } 
+                  }}
                 />
                 <DatePicker
                   label="To"
                   value={customTo}
                   onChange={setCustomTo}
-                  slotProps={{ textField: { size: 'small', sx: { minWidth: 140 } } }}
+                  slotProps={{ 
+                    textField: { 
+                      size: 'small', 
+                      sx: { 
+                        minWidth: 140,
+                        '& .MuiOutlinedInput-notchedOutline': { borderColor: 'divider' },
+                        '& .MuiInputLabel-root': { color: 'text.primary' },
+                        '& .MuiInputBase-input': { color: 'text.primary' },
+                      } 
+                    } 
+                  }}
                 />
               </LocalizationProvider>
             )}
@@ -301,19 +349,19 @@ export default function SiteAnalyticsPage() {
           <>
             {periods.length > 0 && (
               <Box sx={{ mb: 4 }}>
-                <Paper elevation={2} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
+                <Paper elevation={2} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, bgcolor: 'background.paper' }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="h6" fontWeight={600}>
-                      Bar Chart
+                    <Typography variant="h6" fontWeight={600} sx={{ color: 'text.primary' }}>
+                      Water Consumption Bar Chart
                     </Typography>
                     {(session?.user?.role === 'superadmin' || session?.user?.role === 'admin' || session?.user?.role === 'user') && compareData.length > 0 && (
                       <button
                         onClick={exportBarChartData}
-                        className="px-3 py-1 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-1"
-                        title="Export bar chart data to CSV"
+                        className="px-3 py-1 text-sm rounded-md bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors flex items-center gap-1"
+                        title="Export water consumption data to CSV"
                       >
                         <ArrowDownTrayIcon className="w-4 h-4" />
-                        Export Bar Chart
+                        Export Water Data
                       </button>
                     )}
                   </Box>
@@ -321,8 +369,22 @@ export default function SiteAnalyticsPage() {
                     xAxis={[{ data: periods, label: 'Period' }]}
                     series={barSeries}
                     height={350}
+                    sx={{
+                      '& .MuiChartsAxis-line': {
+                        stroke: 'divider',
+                      },
+                      '& .MuiChartsAxis-tick': {
+                        stroke: 'divider',
+                      },
+                      '& .MuiChartsAxis-label': {
+                        fill: 'text.primary',
+                      },
+                      '& .MuiChartsAxis-tickLabel': {
+                        fill: 'text.secondary',
+                      },
+                    }}
                   />
-                  {/* Legend with percent change */}
+                  {/* Legend with water consumption change */}
                   <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, mt: 2 }}>
                     {compareData.map(device => {
                       const change = deviceChanges[device.deviceName];
@@ -331,9 +393,9 @@ export default function SiteAnalyticsPage() {
                       else if (change < 0) color = 'error.main';
                       return (
                             <Box key={device.deviceName} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Typography fontWeight={500}>{device.deviceName}</Typography>
+                          <Typography fontWeight={500} sx={{ color: 'text.primary' }}>{device.deviceName}</Typography>
                           <Typography fontSize={14} sx={{ color }}>
-                            {change === null ? 'N/A' : (change > 0 ? '+' : '') + change.toFixed(1) + '%'}
+                            {change === null ? 'N/A' : (change > 0 ? '+' : '') + change.toFixed(1) + '%'} change
                           </Typography>
                         </Box>
                       );
@@ -344,34 +406,42 @@ export default function SiteAnalyticsPage() {
             )}
             {pieData.length > 0 && (
               <Box sx={{ mb: 4 }}>
-                <Paper elevation={2} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
+                <Paper elevation={2} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3, bgcolor: 'background.paper' }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-                    <Typography variant="h6" fontWeight={600}>
-                      Pie Chart
+                    <Typography variant="h6" fontWeight={600} sx={{ color: 'text.primary' }}>
+                      Water Consumption Distribution
                     </Typography>
                     {(session?.user?.role === 'superadmin' || session?.user?.role === 'admin' || session?.user?.role === 'user') && compareData.length > 0 && (
                       <button
                         onClick={exportPieChartData}
-                        className="px-3 py-1 text-sm rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-1"
-                        title="Export pie chart data to CSV"
+                        className="px-3 py-1 text-sm rounded-md bg-green-600 dark:bg-green-500 text-white hover:bg-green-700 dark:hover:bg-green-600 transition-colors flex items-center gap-1"
+                        title="Export water consumption distribution to CSV"
                       >
                         <ArrowDownTrayIcon className="w-4 h-4" />
-                        Export Pie Chart
+                        Export Water Distribution
                       </button>
                     )}
                   </Box>
                   <PieChart
                     series={[{ data: pieData, innerRadius: 60 }]}
                     height={350}
+                    sx={{
+                      '& .MuiChartsPie-label': {
+                        fill: 'text.primary',
+                      },
+                      '& .MuiChartsPie-labelLine': {
+                        stroke: 'divider',
+                      },
+                    }}
                   />
                 </Paper>
               </Box>
             )}
             {periods.length === 0 && (
-              <Paper elevation={1} sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
-                <Typography variant="body1">
-                  No data available for the selected options.<br />
-                  Try changing the metric or period.
+              <Paper elevation={1} sx={{ p: 4, textAlign: 'center', color: 'text.secondary', bgcolor: 'background.paper' }}>
+                <Typography variant="body1" sx={{ color: 'text.secondary' }}>
+                  No water consumption data available for the selected period.<br />
+                  Try changing the period or ensure water devices are connected.
                 </Typography>
               </Paper>
             )}

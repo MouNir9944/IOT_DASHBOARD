@@ -31,7 +31,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           }}
         />
       </head>
-      <body>
+      <body className="bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
         <Providers session={session}>
           <main>{children}</main>
         </Providers>

@@ -52,11 +52,13 @@ interface NotificationCounts {
 }
 
 import { API_CONFIG, buildApiUrl, validateConfig } from '../../../config/api';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 const API_URL = API_CONFIG.BACKEND_URL;
 
 export default function NotificationsPage() {
   const { data: session, status } = useSession();
+  const { t } = useLanguage();
   const router = useRouter();
   
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -140,7 +142,8 @@ export default function NotificationsPage() {
       const params = new URLSearchParams({
         page: currentPage.toString(),
         limit: '20',
-        status: activeTab // Use active tab as status filter
+        status: activeTab, // Use active tab as status filter
+        userId: user.email // Filter by current user
       });
       
       if (typeFilter !== 'all') params.append('type', typeFilter);
@@ -163,7 +166,7 @@ export default function NotificationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [API_URL, currentPage, activeTab, typeFilter, categoryFilter, priorityFilter]);
+  }, [API_URL, currentPage, activeTab, typeFilter, categoryFilter, priorityFilter, user.email]);
 
   const fetchCounts = useCallback(async () => {
     if (!API_URL) {
@@ -172,7 +175,8 @@ export default function NotificationsPage() {
     }
 
     try {
-      const response = await fetch(`${API_URL}/api/notifications/count`);
+      // Filter counts by current user
+      const response = await fetch(`${API_URL}/api/notifications/count?userId=${user.email}`);
       if (response.ok) {
         const data = await response.json();
         setCounts(data);
@@ -182,7 +186,7 @@ export default function NotificationsPage() {
     } catch (err) {
       console.error('Failed to fetch notification counts:', err);
     }
-  }, [API_URL]);
+  }, [API_URL, user.email]);
 
   useEffect(() => {
     if (API_URL) {
@@ -429,31 +433,31 @@ export default function NotificationsPage() {
       case 'resolved':
         return 'Resolved';
       default:
-        return 'Notifications';
+        return t('notifications.title');
     }
   };
 
   return (
     <DashboardLayout user={user}>
-      <div className="p-6">
+      <div className="p-6 bg-gray-50 dark:bg-gray-900">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">Notifications</h1>
-              <p className="text-gray-600 mt-1">Manage your alerts and notifications</p>
+                      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{t('notifications.title')}</h1>
+        <p className="text-gray-600 dark:text-gray-400 mt-1">{t('notifications.allNotifications')}</p>
             </div>
             <div className="flex items-center space-x-4">
               <button
                 onClick={handleMarkAllAsRead}
-                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100"
+                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/30"
               >
                 <CheckIcon className="w-4 h-4" />
                 <span>Mark All as Read</span>
               </button>
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
               >
                 <FunnelIcon className="w-4 h-4" />
                 <span>Filters</span>
@@ -464,58 +468,58 @@ export default function NotificationsPage() {
           
           {/* Stats */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6">
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center">
-                <div className="p-2 bg-blue-100 rounded-lg">
+                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
                   <BellIcon className="w-5 h-5 text-blue-600" />
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-500">Total</p>
-                  <p className="text-lg font-semibold text-gray-900">{counts.total}</p>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.total}</p>
                 </div>
               </div>
             </div>
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center">
-                <div className="p-2 bg-red-100 rounded-lg">
+                <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
                   <ExclamationCircleIcon className="w-5 h-5 text-red-600" />
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-500">New</p>
-                  <p className="text-lg font-semibold text-gray-900">{counts.new}</p>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">New</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.new}</p>
                 </div>
               </div>
             </div>
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center">
-                <div className="p-2 bg-gray-100 rounded-lg">
+                <div className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
                   <EyeIcon className="w-5 h-5 text-gray-600" />
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-500">Read</p>
-                  <p className="text-lg font-semibold text-gray-900">{counts.read}</p>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Read</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.read}</p>
                 </div>
               </div>
             </div>
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center">
-                <div className="p-2 bg-yellow-100 rounded-lg">
+                <div className="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
                   <CheckIcon className="w-5 h-5 text-yellow-600" />
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-500">Acknowledged</p>
-                  <p className="text-lg font-semibold text-gray-900">{counts.acknowledged}</p>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Acknowledged</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.acknowledged}</p>
                 </div>
               </div>
             </div>
-            <div className="bg-white p-4 rounded-lg border border-gray-200">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center">
-                <div className="p-2 bg-green-100 rounded-lg">
+                <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
                   <CheckCircleIcon className="w-5 h-5 text-green-600" />
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-500">Resolved</p>
-                  <p className="text-lg font-semibold text-gray-900">{counts.resolved}</p>
+                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Resolved</p>
+                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.resolved}</p>
                 </div>
               </div>
             </div>
@@ -524,14 +528,14 @@ export default function NotificationsPage() {
 
         {/* Filters */}
         {showFilters && (
-          <div className="bg-white p-4 rounded-lg border border-gray-200 mb-6">
+          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 mb-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Type</label>
                 <select
                   value={typeFilter}
                   onChange={(e) => setTypeFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
                   <option value="all">All Types</option>
                   <option value="info">Info</option>
@@ -542,11 +546,11 @@ export default function NotificationsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Category</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Category</label>
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
                   <option value="all">All Categories</option>
                   <option value="device">Device</option>
@@ -557,11 +561,11 @@ export default function NotificationsPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Priority</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Priority</label>
                 <select
                   value={priorityFilter}
                   onChange={(e) => setPriorityFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
                   <option value="all">All Priorities</option>
                   <option value="low">Low</option>
@@ -574,7 +578,7 @@ export default function NotificationsPage() {
             <div className="mt-4 flex justify-end">
               <button
                 onClick={clearFilters}
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 border border-gray-300 rounded-md hover:bg-gray-200"
+                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
               >
                 Clear Filters
               </button>
@@ -584,7 +588,7 @@ export default function NotificationsPage() {
 
         {/* Tabs */}
         <div className="mb-6">
-          <div className="border-b border-gray-200">
+          <div className="border-b border-gray-200 dark:border-gray-700">
             <nav className="-mb-px flex space-x-8">
               {(['new', 'acknowledged', 'resolved'] as const).map((tab) => (
                 <button
@@ -595,8 +599,8 @@ export default function NotificationsPage() {
                   }}
                   className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm ${
                     activeTab === tab
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
                   }`}
                 >
                   {getTabIcon(tab)}
@@ -617,10 +621,10 @@ export default function NotificationsPage() {
         </div>
 
         {/* Notifications List */}
-        <div className="bg-white rounded-lg border border-gray-200">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h2 className="text-lg font-semibold text-gray-900">{getTabTitle(activeTab)}</h2>
-            <p className="text-sm text-gray-600">
+        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{getTabTitle(activeTab)}</h2>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
               {totalNotifications} {activeTab === 'new' ? 'alerts' : 'notifications'} found
             </p>
           </div>
@@ -628,15 +632,15 @@ export default function NotificationsPage() {
           {loading ? (
             <div className="p-8 text-center">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-              <p className="mt-2 text-gray-600">Loading notifications...</p>
+                              <p className="mt-2 text-gray-600 dark:text-gray-400">{t('common.loading')}</p>
             </div>
           ) : error ? (
             <div className="p-8 text-center">
               <ExclamationCircleIcon className="w-12 h-12 text-red-500 mx-auto mb-4" />
-              <p className="text-red-600">{error}</p>
+              <p className="text-red-600 dark:text-red-400">{error}</p>
               <button
                 onClick={fetchNotifications}
-                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+                className="mt-4 px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600"
               >
                 Try Again
               </button>
@@ -644,7 +648,7 @@ export default function NotificationsPage() {
           ) : notifications.length === 0 ? (
             <div className="p-8 text-center">
               <BellIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-600">No {activeTab} notifications found</p>
+                              <p className="text-gray-600 dark:text-gray-400">{t('notifications.noNotifications')}</p>
             </div>
           ) : (
             <div className="divide-y divide-gray-200">
@@ -666,8 +670,8 @@ export default function NotificationsPage() {
                 return (
                   <div
                     key={notification._id}
-                    className={`p-6 hover:bg-gray-50 transition-colors ${
-                      notification.status === 'new' ? 'bg-blue-50' : ''
+                    className={`p-6 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                      notification.status === 'new' ? 'bg-blue-50 dark:bg-blue-900/20' : ''
                     }`}
                   >
                     <div className="flex items-start space-x-4">
@@ -677,11 +681,11 @@ export default function NotificationsPage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center space-x-2">
-                            <h3 className="text-sm font-medium text-gray-900">
+                            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
                               {notification.title}
                             </h3>
                             {notification.status === 'new' && (
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200">
                                 New
                               </span>
                             )}
@@ -696,11 +700,11 @@ export default function NotificationsPage() {
                           </div>
                         </div>
                         
-                        <p className="mt-2 text-sm text-gray-600">
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
                           {notification.message}
                         </p>
                         
-                        <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500">
+                        <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500 dark:text-gray-400">
                           <div className="flex items-center space-x-1" title={formatDateTime(notification.createdAt)}>
                             <ClockIcon className="w-4 h-4" />
                             <span>{formatTime(notification.createdAt)} • {formatDateTime(notification.createdAt)}</span>
@@ -725,12 +729,12 @@ export default function NotificationsPage() {
                           )}
                         </div>
                         {(parameter || value !== undefined || threshold !== undefined) && (
-                          <div className="mt-2 text-xs text-gray-700">
+                          <div className="mt-2 text-xs text-gray-700 dark:text-gray-300">
                             {parameter && (
                               <span className="font-medium">{isConsumption ? 'Daily Consumption' : parameter}:</span>
                             )} {formattedValue !== undefined ? `${formattedValue}${unit}` : ''}
                             {threshold !== undefined && (
-                              <span className="ml-2 text-gray-500">({condition || ''} {formattedThreshold}{unit})</span>
+                              <span className="ml-2 text-gray-500 dark:text-gray-400">({condition || ''} {formattedThreshold}{unit})</span>
                             )}
                           </div>
                         )}
@@ -740,7 +744,7 @@ export default function NotificationsPage() {
                           {notification.status === 'new' && (
                             <button
                               onClick={() => handleMarkAsRead(notification._id)}
-                              className="inline-flex items-center px-3 py-1 text-xs font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                              className="inline-flex items-center px-3 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
                             >
                               <EyeIcon className="w-3 h-3 mr-1" />
                               Mark as Read
@@ -749,7 +753,7 @@ export default function NotificationsPage() {
                           {notification.status !== 'acknowledged' && notification.status !== 'resolved' && (
                             <button
                               onClick={() => handleAcknowledge(notification._id)}
-                              className="inline-flex items-center px-3 py-1 text-xs font-medium text-yellow-700 bg-yellow-100 border border-yellow-300 rounded-md hover:bg-yellow-200"
+                              className="inline-flex items-center px-3 py-1 text-xs font-medium text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-md hover:bg-yellow-200 dark:hover:bg-yellow-900/30"
                             >
                               <CheckIcon className="w-3 h-3 mr-1" />
                               Acknowledge
@@ -758,7 +762,7 @@ export default function NotificationsPage() {
                           {notification.status !== 'resolved' && (
                             <button
                               onClick={() => handleResolve(notification._id)}
-                              className="inline-flex items-center px-3 py-1 text-xs font-medium text-green-700 bg-green-100 border border-green-300 rounded-md hover:bg-green-200"
+                              className="inline-flex items-center px-3 py-1 text-xs font-medium text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/20 border border-green-300 dark:border-green-700 rounded-md hover:bg-green-200 dark:hover:bg-green-900/30"
                             >
                               <CheckCircleIcon className="w-3 h-3 mr-1" />
                               Resolve
@@ -776,11 +780,11 @@ export default function NotificationsPage() {
 
         {/* Mark All as Read Feedback */}
         {showMarkAllFeedback && markAllResult && (
-          <div className="mt-6 bg-green-50 border border-green-200 rounded-lg p-4">
+          <div className="mt-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4">
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-2">
                 <CheckCircleIcon className="w-5 h-5 text-green-600" />
-                <h3 className="text-lg font-semibold text-green-800">
+                <h3 className="text-lg font-semibold text-green-800 dark:text-green-200">
                   {markAllResult.message}
                 </h3>
               </div>
@@ -789,45 +793,45 @@ export default function NotificationsPage() {
                   setShowMarkAllFeedback(false);
                   setMarkAllResult(null);
                 }}
-                className="text-green-600 hover:text-green-800"
+                className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300"
               >
                 <XMarkIcon className="w-5 h-5" />
               </button>
             </div>
             
             {markAllResult.affectedNotifications.length > 0 && (
-              <div className="bg-white rounded-lg border border-green-200">
-                <div className="px-4 py-3 border-b border-green-200">
-                  <h4 className="text-sm font-medium text-green-800">
+              <div className="bg-white dark:bg-gray-800 rounded-lg border border-green-200 dark:border-green-700">
+                <div className="px-4 py-3 border-b border-green-200 dark:border-green-700">
+                  <h4 className="text-sm font-medium text-green-800 dark:text-green-200">
                     Affected Notifications ({markAllResult.affectedNotifications.length})
                   </h4>
                 </div>
                 <div className="max-h-64 overflow-y-auto">
                   <table className="w-full">
-                    <thead className="bg-green-50">
+                    <thead className="bg-green-50 dark:bg-green-900/20">
                       <tr>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-green-700">Title</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-green-700">Type</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-green-700">Priority</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-green-700">Category</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-green-700">Created</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-green-700 dark:text-green-300">Title</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-green-700 dark:text-green-300">Type</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-green-700 dark:text-green-300">Priority</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-green-700 dark:text-green-300">Category</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-green-700 dark:text-green-300">Created</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-green-100">
+                    <tbody className="divide-y divide-green-100 dark:divide-green-800">
                       {markAllResult.affectedNotifications.map((notification) => (
-                        <tr key={notification._id} className="hover:bg-green-50">
-                          <td className="px-4 py-2 text-sm text-gray-900">
+                        <tr key={notification._id} className="hover:bg-green-50 dark:hover:bg-green-900/30">
+                          <td className="px-4 py-2 text-sm text-gray-900 dark:text-gray-100">
                             <div className="font-medium">{notification.title}</div>
-                            <div className="text-xs text-gray-500 truncate max-w-xs">
+                            <div className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-xs">
                               {notification.message}
                             </div>
                           </td>
                           <td className="px-4 py-2 text-sm">
                             <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              notification.type === 'success' ? 'bg-green-100 text-green-800' :
-                              notification.type === 'warning' ? 'bg-yellow-100 text-yellow-800' :
-                              notification.type === 'error' || notification.type === 'critical' ? 'bg-red-100 text-red-800' :
-                              'bg-blue-100 text-blue-800'
+                              notification.type === 'success' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200' :
+                              notification.type === 'warning' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200' :
+                              notification.type === 'error' || notification.type === 'critical' ? 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200' :
+                              'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200'
                             }`}>
                               {notification.type}
                             </span>
@@ -837,10 +841,10 @@ export default function NotificationsPage() {
                               {notification.priority}
                             </span>
                           </td>
-                          <td className="px-4 py-2 text-sm text-gray-600 capitalize">
+                          <td className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 capitalize">
                             {notification.category}
                           </td>
-                          <td className="px-4 py-2 text-sm text-gray-600">
+                          <td className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400">
                             {formatTime(notification.createdAt)}
                           </td>
                         </tr>

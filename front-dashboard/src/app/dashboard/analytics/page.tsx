@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '../components/DashboardLayout';
 import { useSession } from 'next-auth/react';
+import { useLanguage } from '../../../contexts/LanguageContext';
 import { 
   ChartBarIcon, 
   BoltIcon, 
@@ -33,24 +34,25 @@ import Box from '@mui/material/Box';
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
 
 
-const metricOptions = [
-  { value: 'energy', label: 'Energy', icon: BoltIcon },
-  { value: 'solar', label: 'Solar', icon: SunIcon },
-  { value: 'water', label: 'Water', icon: CloudIcon },
-  { value: 'gas', label: 'Gas', icon: FireIcon },
-];
-const periodOptions = [
-  { value: 'month', label: 'Monthly' },
-  { value: 'year', label: 'Yearly' },
-  { value: 'custom', label: 'Custom' },
-];
+
 
 export default function AnalyticsPage() {
   const { data: session, status } = useSession();
+  const { t } = useLanguage();
   const router = useRouter();
+  
+  const metricOptions = [
+    { value: 'water', label: t('devices.water'), icon: CloudIcon },
+  ];
+  const periodOptions = [
+    { value: 'month', label: t('analytics.monthlyConsumption') },
+    { value: 'year', label: t('analytics.yearlyConsumption') },
+    { value: 'custom', label: t('common.custom') },
+  ];
+  
   const [sites, setSites] = useState<any[]>([]);
   const [selectedSites, setSelectedSites] = useState<string[]>([]);
-  const [metric, setMetric] = useState('energy');
+  const [metric, setMetric] = useState('water'); 
   const [period, setPeriod] = useState('month');
   const [customFrom, setCustomFrom] = useState<Date | null>(null);
   const [customTo, setCustomTo] = useState<Date | null>(null);
@@ -269,7 +271,11 @@ export default function AnalyticsPage() {
             </FormControl>
             <FormControl sx={{ minWidth: 140 }}>
               <InputLabel>Metric</InputLabel>
-              <Select value={metric} label="Metric" onChange={e => setMetric(e.target.value)}>
+              <Select 
+                value={metric} 
+                label="Metric" 
+                onChange={e => setMetric(e.target.value)}
+              >
                 {metricOptions.map(opt => (
                   <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
                 ))}
@@ -277,7 +283,11 @@ export default function AnalyticsPage() {
             </FormControl>
             <FormControl sx={{ minWidth: 140 }}>
               <InputLabel>Period</InputLabel>
-              <Select value={period} label="Period" onChange={e => setPeriod(e.target.value)}>
+              <Select 
+                value={period} 
+                label="Period" 
+                onChange={e => setPeriod(e.target.value)}
+              >
                 {periodOptions.map(opt => (
                   <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
                 ))}
@@ -289,13 +299,23 @@ export default function AnalyticsPage() {
                   label="From"
                   value={customFrom}
                   onChange={setCustomFrom}
-                  slotProps={{ textField: { size: 'small', sx: { minWidth: 140 } } }}
+                  slotProps={{ 
+                    textField: { 
+                      size: 'small', 
+                      sx: { minWidth: 140 } 
+                    } 
+                  }}
                 />
                 <DatePicker
                   label="To"
                   value={customTo}
                   onChange={setCustomTo}
-                  slotProps={{ textField: { size: 'small', sx: { minWidth: 140 } } }}
+                  slotProps={{ 
+                    textField: { 
+                      size: 'small', 
+                      sx: { minWidth: 140 } 
+                    } 
+                  }}
                 />
               </LocalizationProvider>
             )}
@@ -319,7 +339,7 @@ export default function AnalyticsPage() {
                     {(session?.user?.role === 'superadmin' || session?.user?.role === 'admin' || session?.user?.role === 'user') && compareData.length > 0 && (
                       <button
                         onClick={exportBarChartData}
-                        className="px-3 py-1 text-sm rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-1"
+                        className="px-3 py-1 text-sm rounded-md bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors flex items-center gap-1"
                         title="Export bar chart data to CSV"
                       >
                         <ArrowDownTrayIcon className="w-4 h-4" />
@@ -362,7 +382,7 @@ export default function AnalyticsPage() {
                     {(session?.user?.role === 'superadmin' || session?.user?.role === 'admin' || session?.user?.role === 'user') && compareData.length > 0 && (
                       <button
                         onClick={exportPieChartData}
-                        className="px-3 py-1 text-sm rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-1"
+                        className="px-3 py-1 text-sm rounded-md bg-green-600 dark:bg-green-500 text-white hover:bg-green-700 dark:hover:bg-green-600 transition-colors flex items-center gap-1"
                         title="Export pie chart data to CSV"
                       >
                         <ArrowDownTrayIcon className="w-4 h-4" />

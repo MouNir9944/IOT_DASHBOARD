@@ -377,7 +377,7 @@ async function checkAlertConditions(deviceId, value, unit, type, siteId, siteNam
           console.log(`📧 Processing ${alertConfig.assignedGroups.length} assigned groups for alert: ${alertConfig.title}`);
           
           try {
-            const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:5000';
+            const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:8001';
             
             // Fetch group members for each assigned group
             for (const groupId of alertConfig.assignedGroups) {
@@ -447,7 +447,7 @@ async function checkAlertConditions(deviceId, value, unit, type, siteId, siteNam
           
           try {
             // Try to find an admin or superadmin user as fallback
-            const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:5000';
+            const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:8001';
             const usersResponse = await fetch(`${mainManagerUrl}/api/users?role=admin&limit=1`, {
               method: 'GET',
               headers: { 'Content-Type': 'application/json' },
@@ -471,9 +471,9 @@ async function checkAlertConditions(deviceId, value, unit, type, siteId, siteNam
           }
         }
         
-        // If still no users assigned/resolved, create notification and skip email
+        // If still no users assigned/resolved, create notification in main manager and skip email
         if (uniqueResolvedUserIds.length === 0) {
-          console.log(`⚠️ No users assigned to alert "${alertConfig.title}". Creating notification without email.`);
+          console.log(`⚠️ No users assigned to alert "${alertConfig.title}". Creating notification in main manager without email.`);
 
           const notification = {
             title: alertConfig.title,
@@ -510,38 +510,62 @@ async function checkAlertConditions(deviceId, value, unit, type, siteId, siteNam
             }
           };
           
-          const savedNotification = await Notification.create(notification);
-          console.log(`📢 Notification created (email disabled): ${alertConfig.title}`);
-          
-          // Send SSE message for UI updates
+          // Create notification in main manager database instead of data manager database
           try {
-            const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:5000';
-            const sseMessage = {
-              type: 'notification_created',
-              notification: {
-                _id: savedNotification._id,
-                title: savedNotification.title,
-                message: savedNotification.message,
-                type: savedNotification.type,
-                status: savedNotification.status,
-                createdAt: savedNotification.createdAt
-              }
-            };
+            const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:8001';
+            console.log(`📢 Creating notification in main manager (no user assigned): ${alertConfig.title}`);
             
-            const response = await fetch(`${mainManagerUrl}/api/notifications/sse`, {
+            const response = await fetch(`${mainManagerUrl}/api/notifications`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
+                'User-Agent': 'DataManager/1.0'
               },
-              body: JSON.stringify(sseMessage),
+              body: JSON.stringify(notification),
               timeout: 10000
             });
             
             if (response.ok) {
-              console.log(`✅ SSE message sent for notification (email disabled)`);
+              const savedNotification = await response.json();
+              console.log(`✅ Notification created in main manager (no user assigned): ${alertConfig.title}`);
+              
+              // Send SSE message for UI updates
+              try {
+                const sseMessage = {
+                  type: 'notification_created',
+                  notification: {
+                    _id: savedNotification._id,
+                    title: savedNotification.title,
+                    message: savedNotification.message,
+                    type: savedNotification.type,
+                    status: savedNotification.status,
+                    createdAt: savedNotification.createdAt,
+                    userId: null // No user assigned
+                  }
+                };
+                
+                const sseResponse = await fetch(`${mainManagerUrl}/api/notifications/sse`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(sseMessage),
+                  timeout: 10000
+                });
+                
+                if (sseResponse.ok) {
+                  console.log(`✅ SSE message sent for notification (no user assigned)`);
+                }
+              } catch (error) {
+                console.error('❌ Error sending SSE message:', error.message);
+              }
+            } else {
+              const errorText = await response.text().catch(() => 'No error details available');
+              console.error(`❌ Failed to create notification in main manager: ${response.status} ${response.statusText}`);
+              console.error(`❌ Error response: ${errorText}`);
             }
           } catch (error) {
-            console.error('❌ Error sending SSE message:', error.message);
+            console.error(`❌ Error creating notification in main manager:`, error.message);
           }
           
           return; // Skip the rest of the email delivery process
@@ -634,81 +658,106 @@ async function checkAlertConditions(deviceId, value, unit, type, siteId, siteNam
             deliveryPreferences
           };
           
-          const savedNotification = await Notification.create(notificationWithPreferences);
-          console.log(`📢 Notification created for user ${userId}: ${alertConfig.title}`);
-          
-          // Send SSE message to all connected clients with retry logic
-          const sendSSEMessageWithRetry = async (retryCount = 0) => {
-            try {
-              const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:5000';
-              console.log(`📡 Attempting to send SSE message to: ${mainManagerUrl}/api/notifications/sse`);
+          // Create notification in main manager database instead of data manager database
+          try {
+            const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:8001';
+            console.log(`📢 Creating notification in main manager for user ${userId}: ${alertConfig.title}`);
+            
+            const response = await fetch(`${mainManagerUrl}/api/notifications`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'User-Agent': 'DataManager/1.0'
+              },
+              body: JSON.stringify(notificationWithPreferences),
+              timeout: 10000
+            });
+            
+            if (response.ok) {
+              const savedNotification = await response.json();
+              console.log(`✅ Notification created in main manager for user ${userId}: ${alertConfig.title}`);
               
-              const sseMessage = {
-                type: 'notification_created',
-                notification: {
-                  _id: savedNotification._id,
-                  title: savedNotification.title,
-                  message: savedNotification.message,
-                  type: savedNotification.type,
-                  status: savedNotification.status,
-                  createdAt: savedNotification.createdAt
+              // Send SSE message to all connected clients with retry logic
+              const sendSSEMessageWithRetry = async (retryCount = 0) => {
+                try {
+                  console.log(`📡 Attempting to send SSE message to: ${mainManagerUrl}/api/notifications/sse`);
+                  
+                  const sseMessage = {
+                    type: 'notification_created',
+                    notification: {
+                      _id: savedNotification._id,
+                      title: savedNotification.title,
+                      message: savedNotification.message,
+                      type: savedNotification.type,
+                      status: savedNotification.status,
+                      createdAt: savedNotification.createdAt,
+                      userId: savedNotification.userId // Include userId for proper filtering
+                    }
+                  };
+                  
+                  console.log(`📤 Sending SSE message:`, JSON.stringify(sseMessage, null, 2));
+                  
+                  // Send to main manager's SSE endpoint
+                  const sseResponse = await fetch(`${mainManagerUrl}/api/notifications/sse`, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(sseMessage),
+                    timeout: 10000 // 10 second timeout
+                  });
+                  
+                  if (!sseResponse.ok) {
+                    const errorText = await sseResponse.text().catch(() => 'No error details available');
+                    console.error(`❌ SSE message failed with status: ${sseResponse.status} ${sseResponse.statusText}`);
+                    console.error(`❌ Error response: ${errorText}`);
+                    
+                    // Retry on 429 (rate limit) or 5xx errors, but not on 4xx client errors
+                    if ((sseResponse.status === 429 || sseResponse.status >= 500) && retryCount < 3) {
+                      const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff: 1s, 2s, 4s
+                      console.log(`🔄 Retrying SSE message in ${delay}ms (attempt ${retryCount + 1}/3)...`);
+                      setTimeout(() => sendSSEMessageWithRetry(retryCount + 1), delay);
+                      return;
+                    }
+                  } else {
+                    const responseData = await sseResponse.json().catch(() => ({}));
+                    console.log(`✅ SSE message sent successfully to main manager`);
+                    console.log(`📥 Response:`, responseData);
+                  }
+                } catch (error) {
+                  console.error('❌ Error sending SSE message:', error.message);
+                  console.error('❌ Error type:', error.constructor.name);
+                  
+                  // Retry on network errors
+                  if (retryCount < 3 && (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT')) {
+                    const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff: 1s, 2s, 4s
+                    console.log(`🔄 Retrying SSE message in ${delay}ms due to network error (attempt ${retryCount + 1}/3)...`);
+                    setTimeout(() => sendSSEMessageWithRetry(retryCount + 1), delay);
+                    return;
+                  }
+                  
+                  // Check if it's a network error
+                  if (error.code === 'ECONNREFUSED') {
+                    console.error('❌ Connection refused - Main manager may not be running on port 8001');
+                  } else if (error.code === 'ENOTFOUND') {
+                    console.error('❌ Host not found - Check MAIN_MANAGER_URL environment variable');
+                  } else if (error.code === 'ETIMEDOUT') {
+                    console.error('❌ Request timeout - Main manager may be slow to respond');
+                  }
                 }
               };
               
-              console.log(`📤 Sending SSE message:`, JSON.stringify(sseMessage, null, 2));
+              // Start the SSE message sending process
+              sendSSEMessageWithRetry();
               
-              // Send to main manager's SSE endpoint
-              const response = await fetch(`${mainManagerUrl}/api/notifications/sse`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(sseMessage),
-                timeout: 10000 // 10 second timeout
-              });
-              
-              if (!response.ok) {
-                const errorText = await response.text().catch(() => 'No error details available');
-                console.error(`❌ SSE message failed with status: ${response.status} ${response.statusText}`);
-                console.error(`❌ Error response: ${errorText}`);
-                
-                // Retry on 429 (rate limit) or 5xx errors, but not on 4xx client errors
-                if ((response.status === 429 || response.status >= 500) && retryCount < 3) {
-                  const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff: 1s, 2s, 4s
-                  console.log(`🔄 Retrying SSE message in ${delay}ms (attempt ${retryCount + 1}/3)...`);
-                  setTimeout(() => sendSSEMessageWithRetry(retryCount + 1), delay);
-                  return;
-                }
-              } else {
-                const responseData = await response.json().catch(() => ({}));
-                console.log(`✅ SSE message sent successfully to main manager`);
-                console.log(`📥 Response:`, responseData);
-              }
-            } catch (error) {
-              console.error('❌ Error sending SSE message:', error.message);
-              console.error('❌ Error type:', error.constructor.name);
-              
-              // Retry on network errors
-              if (retryCount < 3 && (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND' || error.code === 'ETIMEDOUT')) {
-                const delay = Math.pow(2, retryCount) * 1000; // Exponential backoff: 1s, 2s, 4s
-                console.log(`🔄 Retrying SSE message in ${delay}ms due to network error (attempt ${retryCount + 1}/3)...`);
-                setTimeout(() => sendSSEMessageWithRetry(retryCount + 1), delay);
-                return;
-              }
-              
-              // Check if it's a network error
-              if (error.code === 'ECONNREFUSED') {
-                console.error('❌ Connection refused - Main manager may not be running on port 5000');
-              } else if (error.code === 'ENOTFOUND') {
-                console.error('❌ Host not found - Check MAIN_MANAGER_URL environment variable');
-              } else if (error.code === 'ETIMEDOUT') {
-                console.error('❌ Request timeout - Main manager may be slow to respond');
-              }
+            } else {
+              const errorText = await response.text().catch(() => 'No error details available');
+              console.error(`❌ Failed to create notification in main manager: ${response.status} ${response.statusText}`);
+              console.error(`❌ Error response: ${errorText}`);
             }
-          };
-          
-          // Start the SSE message sending process
-          sendSSEMessageWithRetry();
+          } catch (error) {
+            console.error(`❌ Error creating notification in main manager:`, error.message);
+          }
         }
         
         // Here you could also:

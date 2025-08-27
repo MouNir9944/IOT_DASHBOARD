@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '../../components/DashboardLayout';
 import { useSession } from 'next-auth/react';
+import { useLanguage } from '../../../../contexts/LanguageContext';
 import { 
   ChartBarIcon, 
   BoltIcon, 
@@ -21,15 +22,21 @@ import { BarChart } from '@mui/x-charts/BarChart';
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
 
-const timePeriods = [
-  { label: '7d', value: '7d', granularity: 'day' },
-  { label: '30d', value: '30d', granularity: 'day' },
-  { label: 'Custom', value: 'custom', granularity: 'day' }
-];
+// NOTE: This page intentionally excludes pressure and temperature devices
+// Only energy, solar, water, and gas devices are displayed
+// Pressure and temperature data can be accessed from individual device pages
 
 export default function SiteDetailPage() {
   const params = useParams();
+  const { t } = useLanguage();
   const siteId = params?.siteId as string;
+  
+  const timePeriods = [
+    { label: '7d', value: '7d', granularity: 'day' },
+    { label: '30d', value: '30d', granularity: 'day' },
+    { label: t('common.custom'), value: 'custom', granularity: 'day' }
+  ];
+  
   const [site, setSite] = useState<any>(null);
   const [sites, setSites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,45 +123,47 @@ export default function SiteDetailPage() {
     };
   };
 
-  // CSV Export function
-  const exportToCSV = () => {
+  // CSV Export function for individual charts
+  const exportChartToCSV = (chartType: string, data: number[], labels: string[]) => {
     const { from, to } = getDateRange();
     const granularity = getGranularity();
     
     // Prepare CSV data
     const csvData = [];
     
-    // Add header
-    csvData.push(['Date', 'Energy (kWh)', 'Solar (kWh)', 'Water (m³)', 'Gas (m³)']);
-    
-    // Get the maximum length of all data arrays
-    const maxLength = Math.max(
-      energyLabels.length,
-      solarLabels.length,
-      waterLabels.length,
-      gasLabels.length
-    );
+    // Add header based on chart type
+    let header = ['Date'];
+    let unit = '';
+    switch (chartType) {
+      case 'energy':
+        header.push('Energy (kWh)');
+        unit = 'kWh';
+        break;
+      case 'solar':
+        header.push('Solar Production (kWh)');
+        unit = 'kWh';
+        break;
+      case 'water':
+        header.push('Water Usage (m³)');
+        unit = 'm³';
+        break;
+      case 'gas':
+        header.push('Gas Usage (m³)');
+        unit = 'm³';
+        break;
+    }
+    csvData.push(header);
     
     // Add data rows (only include rows with actual data)
-    for (let i = 0; i < maxLength; i++) {
-      const date = energyLabels[i] || solarLabels[i] || waterLabels[i] || gasLabels[i];
-      const energy = energyData[i] || 0;
-      const solar = solarData[i] || 0;
-      const water = waterData[i] || 0;
-      const gas = gasData[i] || 0;
+    for (let i = 0; i < labels.length; i++) {
+      const date = labels[i];
+      const value = data[i] || 0;
       
-      // Only add row if at least one value is non-zero
-      if (energy > 0 || solar > 0 || water > 0 || gas > 0) {
+      // Only add row if value is non-zero
+      if (value > 0) {
         csvData.push([
-          date ? new Date(date).toLocaleDateString('en-US', { 
-            year: 'numeric', 
-            month: '2-digit', 
-            day: '2-digit' 
-          }) : '',
-          energy.toFixed(3),
-          solar.toFixed(3),
-          water.toFixed(3),
-          gas.toFixed(3)
+          date ? new Date(date).toISOString().slice(0, 10) : '',
+          value.toFixed(3)
         ]);
       }
     }
@@ -167,63 +176,92 @@ export default function SiteDetailPage() {
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
     link.setAttribute('href', url);
-    link.setAttribute('download', `${site.name}_data_${selectedPeriod}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `${site.name}_${chartType}_${selectedPeriod}_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
-  // Get date range based on selected period
-  const getDateRange = () => {
+  // Get date range based on selected period (using UTC time)
+  const getDateRange = (): { from: string; to: string } => {
     const now = new Date();
-    const to = now.toISOString();
+    
+    // Use UTC time for consistent boundaries
+    const utcNow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+    const to = utcNow.toISOString();
     let from: string;
+
     switch (selectedPeriod) {
       case '7d':
-        from = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString();
+        // Calculate exactly 7 days ago in UTC
+        const sevenDaysAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6, 0, 0, 0, 0));
+        from = sevenDaysAgo.toISOString();
         break;
       case '30d':
-        from = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString();
+        // Calculate exactly 30 days ago in UTC
+        const thirtyDaysAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 29, 0, 0, 0, 0));
+        from = thirtyDaysAgo.toISOString();
         break;
       case 'custom':
         if (customFrom && customTo) {
           return { from: customFrom.toISOString(), to: customTo.toISOString() };
         }
-        from = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString();
+        // Fallback to 7d if custom dates not set
+        const fallbackDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6, 0, 0, 0, 0));
+        from = fallbackDate.toISOString();
         break;
       default:
-        from = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString();
+        const defaultDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6, 0, 0, 0, 0));
+        from = defaultDate.toISOString();
     }
+
     return { from, to };
   };
+
   // Get granularity
   const getGranularity = () => {
     const period = timePeriods.find(p => p.value === selectedPeriod);
     return period?.granularity || 'day';
   };
 
-  // Helper to generate a list of periods (labels) between two dates
+  // Helper to generate a list of periods (labels) between two dates (matching dashboard approach)
   function generatePeriodLabels(from: string, to: string, granularity: string) {
     const start = new Date(from);
     const end = new Date(to);
     const labels: string[] = [];
-    let current = new Date(start);
-    while (current <= end) {
-      if (granularity === 'day') {
-        labels.push(current.toISOString().slice(0, 10));
-        current.setDate(current.getDate() + 1);
-      } else if (granularity === 'month') {
+    
+    // For daily granularity, ensure we get exactly the right number of days
+    if (granularity === 'day') {
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      
+      for (let i = 0; i <= daysDiff; i++) {
+        const date = new Date(start);
+        date.setDate(start.getDate() + i);
+        labels.push(date.toISOString().slice(0, 10));
+      }
+    } else if (granularity === 'month') {
+      let current = new Date(start);
+      while (current <= end) {
         labels.push(current.toISOString().slice(0, 7));
         current.setMonth(current.getMonth() + 1);
-      } else if (granularity === 'year') {
+      }
+    } else if (granularity === 'year') {
+      let current = new Date(start);
+      while (current <= end) {
         labels.push(current.getFullYear().toString());
         current.setFullYear(current.getFullYear() + 1);
-      } else {
-        labels.push(current.toISOString().slice(0, 10));
-        current.setDate(current.getDate() + 1);
+      }
+    } else {
+      // Default to daily
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      for (let i = 0; i <= daysDiff; i++) {
+        const date = new Date(start);
+        date.setDate(start.getDate() + i);
+        labels.push(date.toISOString().slice(0, 10));
       }
     }
+    
     return labels;
   }
 
@@ -286,15 +324,99 @@ export default function SiteDetailPage() {
         ? data
         : data.values || [];
       console.log(`[fetchStats] type: ${type}, filled:`, filled);
-      // Map period to value
-      const valueMap = new Map(
-        filled.map((v: any) => [
-          v.period,
-          (v.totalIndex ?? v.total ?? v.value ?? 0)
-        ])
-      );
-      setData(periodLabels.map(label => valueMap.get(label) ?? 0));
-      setLabels(periodLabels);
+      // Map period to value using dashboard approach for consistency
+      const valueMap = new Map();
+      filled.forEach((v: any) => {
+        const period = v.period;
+        const value = v.totalIndex ?? v.total ?? v.value ?? 0;
+        valueMap.set(period, value);
+      });
+      
+      // Use the exact same fillMissingPeriods logic as dashboard for consistency
+      const fillMissingPeriods = (data: any[], fromDate: string, toDate: string, granularity: string) => {
+        const startDate = new Date(fromDate);
+        const endDate = new Date(toDate);
+        const periods: { [key: string]: number } = {};
+        const labels: string[] = [];
+        
+        // Initialize all periods with zero
+        let currentDate = new Date(startDate);
+        while (currentDate <= endDate) {
+          let periodKey: string;
+          let label: string;
+          
+          switch (granularity) {
+            case 'day':
+              // Use consistent date format that matches backend expectations
+              periodKey = currentDate.toISOString().slice(0, 10);
+              label = currentDate.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric' 
+              });
+              currentDate.setDate(currentDate.getDate() + 1);
+              break;
+            case 'week':
+              // Get ISO week
+              const year = currentDate.getFullYear();
+              const week = Math.ceil((currentDate.getTime() - new Date(year, 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
+              periodKey = `${year}-W${week.toString().padStart(2, '0')}`;
+              label = `Week ${week}`;
+              currentDate.setDate(currentDate.getDate() + 7);
+              break;
+            case 'month':
+              periodKey = currentDate.toISOString().slice(0, 7) + '-01T00:00:00.000Z';
+              label = currentDate.toLocaleDateString('en-US', { 
+                month: 'short', 
+                year: 'numeric' 
+              });
+              currentDate.setMonth(currentDate.getMonth() + 1);
+              break;
+            default:
+              periodKey = currentDate.toISOString().slice(0, 10);
+              label = currentDate.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric' 
+              });
+              currentDate.setDate(currentDate.getDate() + 1);
+          }
+          
+          periods[periodKey] = 0;
+          labels.push(label);
+        }
+        
+        // Fill in actual data - handle both period and date formats from backend
+        data.forEach(item => {
+          let key = item.period;
+          
+          // If the backend returns a date instead of period, convert it to our period format
+          if (item.date) {
+            const itemDate = new Date(item.date);
+            key = itemDate.toISOString().slice(0, 10);
+          }
+          
+          // Also handle cases where the backend might return the period in a different format
+          if (periods.hasOwnProperty(key)) {
+            periods[key] = item.totalIndex || item.total || item.value || 0;
+          }
+        });
+        
+        // Convert to sorted array
+        const sortedEntries = Object.entries(periods)
+          .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime());
+        
+        const result = {
+          values: sortedEntries.map(([_, total]) => total),
+          labels: labels
+        };
+        
+        return result;
+      };
+      
+      // Apply the same fillMissingPeriods logic as dashboard
+      const filledData = fillMissingPeriods(filled, from, to, granularity);
+      
+      setData(filledData.values);
+      setLabels(filledData.labels);
     };
     fetchStats('energy', setEnergyData, setEnergyLabels);
     fetchStats('solar', setSolarData, setSolarLabels);
@@ -319,8 +441,8 @@ export default function SiteDetailPage() {
     fetchIndex('gas', setGasIndex);
   }, [siteId, selectedPeriod, customFrom, customTo]);
 
-  if (loading) return <div className="p-8">Loading...</div>;
-  if (error) return <div className="p-8 text-red-600">{error}</div>;
+  if (loading) return <div className="p-8 text-gray-600 dark:text-gray-400">Loading...</div>;
+  if (error) return <div className="p-8 text-red-600 dark:text-red-400">{error}</div>;
   if (!site) return null;
 
   // Prepare user object for DashboardLayout
@@ -329,12 +451,18 @@ export default function SiteDetailPage() {
     email: session?.user?.email || '',
     role: session?.user?.role || '',
   };
-  const canConfigure = user.role === 'superadmin' || user.role === 'admin' || user.role === 'installator';
+  const canConfigure = user.role === 'superadmin' || user.role === 'admin' || user.role === 'technicien';
 
   // Helper function to check if data has meaningful values (non-zero)
   const hasData = (data: number[]) => {
     return data.length > 0 && data.some(value => value > 0);
   };
+
+  // Filter to exclude pressure and temperature devices - only show energy, solar, water, gas
+  const allowedDeviceTypes = ['energy', 'solar', 'water', 'gas'];
+  const filteredDevices = site.devices?.filter((device: any) => 
+    allowedDeviceTypes.includes(device.type)
+  ) || [];
 
   // Compute stats
   const energyChange = calcChange(energyData);
@@ -344,11 +472,11 @@ export default function SiteDetailPage() {
 
   // Time period selector component
   const TimePeriodSelector = () => (
-    <div className="bg-white rounded-lg shadow p-4 mb-4">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4">
       <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4">
         <div className="flex items-center gap-2">
-          <CalendarIcon className="w-5 h-5 text-gray-500" />
-          <span className="text-sm font-medium text-gray-700">Time Period:</span>
+          <CalendarIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.period')}:</span>
         </div>
         <div className="flex flex-1 items-center">
           <div className="flex flex-wrap gap-2 items-center">
@@ -362,7 +490,7 @@ export default function SiteDetailPage() {
                 className={`px-3 py-1 text-sm rounded-md transition-colors ${
                   selectedPeriod === period.value
                     ? 'bg-blue-500 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                 }`}
               >
                 {period.label}
@@ -374,30 +502,21 @@ export default function SiteDetailPage() {
             onClick={() => router.push(`/dashboard/sites/${siteId}/analytics`)}
             className="px-3 py-1 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors ml-4"
           >
-            Analytics for this Site
+            {t('sites.siteAnalytics')}
           </button>
-          {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && (
-            <button
-              onClick={exportToCSV}
-              className="px-3 py-1 text-sm rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors ml-2 flex items-center gap-1"
-              title="Export data to CSV"
-            >
-              <ArrowDownTrayIcon className="w-4 h-4" />
-              Export CSV
-            </button>
-          )}
+
         </div>
         {showCustomPicker && (
           <LocalizationProvider dateAdapter={AdapterDateFns}>
             <DateTimePicker
-              label="From"
+              label={t('common.from')}
               value={customFrom}
               onChange={setCustomFrom}
               slotProps={{ textField: { size: 'small' } }}
             />
-            <span className="text-gray-500">to</span>
+            <span className="text-gray-500 dark:text-gray-400">{t('common.to')}</span>
             <DateTimePicker
-              label="To"
+              label={t('common.to')}
               value={customTo}
               onChange={setCustomTo}
               slotProps={{ textField: { size: 'small' } }}
@@ -519,12 +638,13 @@ export default function SiteDetailPage() {
       <div className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
 
         {/* Site Details Card */}
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">{site.name}</h3>
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">{site.name}</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <h4 className="font-medium text-gray-700 mb-2">Location Information</h4>
-              <div className="space-y-1 text-sm text-gray-600">
+              {/*
+              <h4 className="font-medium text-gray-700 dark:text-gray-300 mb-2">Location Information</h4>
+              <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
                 <div>
                   Latitude: {site.location?.latitude !== undefined ? site.location.latitude.toFixed(6) : 'N/A'},&nbsp;
                   </div>
@@ -533,32 +653,35 @@ export default function SiteDetailPage() {
                 </div>
                 {site.address && <div>Address: {site.address}</div>}
               </div>
+              */}
             </div>
             <div>
-              <h4 className="font-medium text-gray-700 mb-2">Site Information</h4>
-              <div className="space-y-1 text-sm text-gray-600">
+              {/*
+              <h4 className="font-medium text-gray-700 dark:text-gray-300 mb-2">Site Information</h4>
+              <div className="space-y-1 text-sm text-gray-600 dark:text-gray-400">
                 <div>Type: {site.type}</div>
                 <div>Status: {site.status || 'Active'}</div>
-                <div>Devices: {site.devices?.length || 0}</div> 
+                <div>Devices: {filteredDevices.length || 0} (excluding pressure/temperature)</div> 
               </div>
+              */}
             </div>
           </div>
         </div>
         {/* Time Period Selector */}
-        {user.role !== 'installator' && <TimePeriodSelector />}
+        {user.role !== 'technicien' && <TimePeriodSelector />}
         {/* Stats Cards */}
-        {user.role !== 'installator' && (
+        {user.role !== 'technicien' && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
             {/* Energy Stats - Only show if it has data */}
             {hasData(energyData) && (
-              <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
                 <div className="flex items-center">
                   <div className="p-2 sm:p-3 rounded-lg bg-blue-500">
                     <BoltIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                   </div>
                   <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Energy Consumption</p>
-                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                    <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 truncate">{t('parameters.energy')} {t('parameters.consumption')}</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100">
                       {formatValue('energy', energyIndex !== null ? energyIndex : energyData.reduce((a, b) => a + b, 0))}
                     </p>
                   </div>
@@ -570,25 +693,25 @@ export default function SiteDetailPage() {
                     <ArrowTrendingDownIcon className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
                   )}
                   <span className={`ml-1 text-xs sm:text-sm font-medium ${
-                    energyChange.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
+                    energyChange.changeType === 'increase' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   }`}>
                     {energyChange.change}
                   </span>
-                  <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last period</span>
+                  <span className="ml-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400 hidden sm:inline">{t('common.from')} {t('common.last')} {t('common.period')}</span>
                 </div>
               </div>
             )}
 
             {/* Solar Stats - Only show if it has data */}
             {hasData(solarData) && (
-              <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
                 <div className="flex items-center">
                   <div className="p-2 sm:p-3 rounded-lg bg-green-500">
                     <SunIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                   </div>
                   <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Solar Production</p>
-                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                    <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 truncate">{t('devices.solar')} {t('parameters.production')}</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100">
                       {formatValue('solar', solarIndex !== null ? solarIndex : solarData.reduce((a, b) => a + b, 0))}
                     </p>
                   </div>
@@ -600,25 +723,25 @@ export default function SiteDetailPage() {
                     <ArrowTrendingDownIcon className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
                   )}
                   <span className={`ml-1 text-xs sm:text-sm font-medium ${
-                    solarChange.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
+                    solarChange.changeType === 'increase' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   }`}>
                     {solarChange.change}
                   </span>
-                  <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last period</span>
+                  <span className="ml-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400 hidden sm:inline">{t('common.from')} {t('common.last')} {t('common.period')}</span>
                 </div>
               </div>
             )}
 
             {/* Water Stats - Only show if it has data */}
             {hasData(waterData) && (
-              <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
                 <div className="flex items-center">
                   <div className="p-2 sm:p-3 rounded-lg bg-purple-500">
                     <CloudIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                   </div>
                   <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Water Usage</p>
-                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                    <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 truncate">{t('devices.water')} {t('parameters.usage')}</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100">
                       {formatValue('water', waterIndex !== null ? waterIndex : waterData.reduce((a, b) => a + b, 0))}
                     </p>
                   </div>
@@ -630,25 +753,25 @@ export default function SiteDetailPage() {
                     <ArrowTrendingDownIcon className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
                   )}
                   <span className={`ml-1 text-xs sm:text-sm font-medium ${
-                    waterChange.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
+                    waterChange.changeType === 'increase' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   }`}>
                     {waterChange.change}
                   </span>
-                  <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last period</span>
+                  <span className="ml-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400 hidden sm:inline">{t('common.from')} {t('common.last')} {t('common.period')}</span>
                 </div>
               </div>
             )}
 
             {/* Gas Stats - Only show if it has data */}
             {hasData(gasData) && (
-              <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
                 <div className="flex items-center">
                   <div className="p-2 sm:p-3 rounded-lg bg-red-500">
                     <FireIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                   </div>
                   <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Gas Usage</p>
-                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                    <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 truncate">{t('devices.gas')} {t('parameters.usage')}</p>
+                    <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100">
                       {formatValue('gas', gasIndex !== null ? gasIndex : gasData.reduce((a, b) => a + b, 0))}
                     </p>
                   </div>
@@ -660,22 +783,22 @@ export default function SiteDetailPage() {
                     <ArrowTrendingDownIcon className="w-3 h-3 sm:w-4 sm:h-4 text-red-500" />
                   )}
                   <span className={`ml-1 text-xs sm:text-sm font-medium ${
-                    gasChange.changeType === 'increase' ? 'text-green-600' : 'text-red-600'
+                    gasChange.changeType === 'increase' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                   }`}>
                     {gasChange.change}
                   </span>
-                  <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last period</span>
+                  <span className="ml-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400 hidden sm:inline">{t('common.from')} {t('common.last')} {t('common.period')}</span>
                 </div>
               </div>
             )}
 
             {/* Show message when no stats have data */}
             {!hasData(energyData) && !hasData(solarData) && !hasData(waterData) && !hasData(gasData) && (
-              <div className="col-span-full bg-white rounded-lg shadow p-8 text-center">
+              <div className="col-span-full bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
                 <BoltIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Devices Connected</h3>
-                <p className="text-gray-500">
-                  No devices are currently connected. Please check your device connections and ensure they are properly configured.
+                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">{t('devices.noDevices')}</h3>
+                <p className="text-gray-500 dark:text-gray-400">
+                  {t('devices.noDevices')}
                 </p>
               </div>
             )}
@@ -684,7 +807,7 @@ export default function SiteDetailPage() {
 
 
         {/* Charts */}
-        {user.role !== 'installator' && (() => {
+        {user.role !== 'technicien' && (() => {
           // Count how many charts have data
           const chartsWithData = [
             hasData(energyData),
@@ -713,8 +836,20 @@ export default function SiteDetailPage() {
               {hasData(energyData) && (() => {
                 const energyStats = calculateStats(energyData, 'energy');
                 return (
-                  <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-                    <h4 className="text-sm font-semibold mb-2">Energy Consumption (kWh)</h4>
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('parameters.energy')} {t('parameters.consumption')} ({t('units.kilowattHours')})</h4>
+                      {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && (
+                        <button
+                          onClick={() => exportChartToCSV('energy', energyData, energyLabels)}
+                          className="px-2 py-1 text-xs rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-1"
+                          title={t('analytics.exportData')}
+                        >
+                          <ArrowDownTrayIcon className="w-3 h-3" />
+                          Export
+                        </button>
+                      )}
+                    </div>
                     <BarChart
                       xAxis={[{ data: energyLabels.map(d => {
                         const date = new Date(d);
@@ -726,46 +861,46 @@ export default function SiteDetailPage() {
                     
                     {/* Chart Analytics */}
                     {energyStats && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
+                      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                         <div className="flex justify-between items-center mb-3">
-                          <h5 className="text-sm font-semibold text-gray-900">Chart Analytics</h5>
-                          <div className="text-xs text-gray-500">{energyStats.dataPoints} data points</div>
+                          <h5 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('analytics.chartAnalytics')}</h5>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{energyStats.dataPoints} {t('analytics.dataPoints')}</div>
                         </div>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                          <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ArrowTrendingUpIcon className="w-4 h-4 text-green-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Total Consumption</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">{t('analytics.totalConsumption')}</h6>
                             </div>
-                            <div className="text-sm font-bold text-green-600">{energyStats.totalConsumption}</div>
-                            <div className="text-xs text-gray-500">Selected period</div>
+                            <div className="text-sm font-bold text-green-600 dark:text-green-400">{energyStats.totalConsumption}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">{t('analytics.selectedPeriod')}</div>
                           </div>
                           
-                          <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ChartBarIcon className="w-4 h-4 text-blue-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Average per day</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">{t('analytics.averagePerDay')}</h6>
                             </div>
-                            <div className="text-sm font-bold text-blue-600">{energyStats.averagePerDay}</div>
-                            <div className="text-xs text-gray-500">Average consumption</div>
+                            <div className="text-sm font-bold text-blue-600 dark:text-blue-400">{energyStats.averagePerDay}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">{t('analytics.averageConsumption')}</div>
                           </div>
                           
-                          <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ArrowTrendingUpIcon className="w-4 h-4 text-purple-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Peak Consumption</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">{t('analytics.peakConsumption')}</h6>
                             </div>
-                            <div className="text-sm font-bold text-purple-600">{energyStats.peakConsumption}</div>
-                            <div className="text-xs text-gray-500">Highest daily usage</div>
+                            <div className="text-sm font-bold text-purple-600 dark:text-purple-400">{energyStats.peakConsumption}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">{t('analytics.highestDailyUsage')}</div>
                           </div>
                           
-                          <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <CalendarIcon className="w-4 h-4 text-yellow-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Data Points</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">{t('analytics.dataPoints')}</h6>
                             </div>
-                            <div className="text-sm font-bold text-yellow-600">{energyStats.dataPoints}</div>
-                            <div className="text-xs text-gray-500">Data periods</div>
+                            <div className="text-sm font-bold text-yellow-600 dark:text-yellow-400">{energyStats.dataPoints}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">{t('analytics.dataPeriods')}</div>
                           </div>
                         </div>
                       </div>
@@ -778,8 +913,20 @@ export default function SiteDetailPage() {
               {hasData(solarData) && (() => {
                 const solarStats = calculateStats(solarData, 'solar');
                 return (
-                  <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-                    <h4 className="text-sm font-semibold mb-2">Solar Production (kWh)</h4>
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Solar Production (kWh)</h4>
+                      {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && (
+                        <button
+                          onClick={() => exportChartToCSV('solar', solarData, solarLabels)}
+                          className="px-2 py-1 text-xs rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-1"
+                          title={t('analytics.exportData')}
+                        >
+                          <ArrowDownTrayIcon className="w-3 h-3" />
+                          Export
+                        </button>
+                      )}
+                    </div>
                     <BarChart
                       xAxis={[{ data: solarLabels.map(d => {
                         const date = new Date(d);
@@ -791,46 +938,46 @@ export default function SiteDetailPage() {
                     
                     {/* Chart Analytics */}
                     {solarStats && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
+                      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                         <div className="flex justify-between items-center mb-3">
-                          <h5 className="text-sm font-semibold text-gray-900">Chart Analytics</h5>
-                          <div className="text-xs text-gray-500">{solarStats.dataPoints} data points</div>
+                          <h5 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Chart Analytics</h5>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{solarStats.dataPoints} data points</div>
                         </div>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                          <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ArrowTrendingUpIcon className="w-4 h-4 text-green-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Total Production</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">Total Production</h6>
                             </div>
-                            <div className="text-sm font-bold text-green-600">{solarStats.totalConsumption}</div>
-                            <div className="text-xs text-gray-500">Selected period</div>
+                            <div className="text-sm font-bold text-green-600 dark:text-green-400">{solarStats.totalConsumption}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Selected period</div>
                           </div>
                           
-                          <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ChartBarIcon className="w-4 h-4 text-blue-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Average per day</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">Average per day</h6>
                             </div>
-                            <div className="text-sm font-bold text-blue-600">{solarStats.averagePerDay}</div>
-                            <div className="text-xs text-gray-500">Average production</div>
+                            <div className="text-sm font-bold text-blue-600 dark:text-blue-400">{solarStats.averagePerDay}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Average production</div>
                           </div>
                           
-                          <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ArrowTrendingUpIcon className="w-4 h-4 text-purple-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Peak Production</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">Peak Production</h6>
                             </div>
-                            <div className="text-sm font-bold text-purple-600">{solarStats.peakConsumption}</div>
-                            <div className="text-xs text-gray-500">Highest daily production</div>
+                            <div className="text-sm font-bold text-purple-600 dark:text-purple-400">{solarStats.peakConsumption}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Highest daily production</div>
                           </div>
                           
-                          <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <CalendarIcon className="w-4 h-4 text-yellow-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Data Points</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">Data Points</h6>
                             </div>
-                            <div className="text-sm font-bold text-yellow-600">{solarStats.dataPoints}</div>
-                            <div className="text-xs text-gray-500">Data periods</div>
+                            <div className="text-sm font-bold text-yellow-600 dark:text-yellow-400">{solarStats.dataPoints}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Data periods</div>
                           </div>
                         </div>
                       </div>
@@ -843,8 +990,20 @@ export default function SiteDetailPage() {
               {hasData(waterData) && (() => {
                 const waterStats = calculateStats(waterData, 'water');
                 return (
-                  <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-                    <h4 className="text-sm font-semibold mb-2">Water Usage (m³)</h4>
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Water Usage (m³)</h4>
+                      {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && (
+                        <button
+                          onClick={() => exportChartToCSV('water', waterData, waterLabels)}
+                          className="px-2 py-1 text-xs rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-1"
+                          title={t('analytics.exportData')}
+                        >
+                          <ArrowDownTrayIcon className="w-3 h-3" />
+                          Export
+                        </button>
+                      )}
+                    </div>
                     <BarChart
                       xAxis={[{ data: waterLabels.map(d => {
                         const date = new Date(d);
@@ -856,46 +1015,46 @@ export default function SiteDetailPage() {
                     
                     {/* Chart Analytics */}
                     {waterStats && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
+                      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                         <div className="flex justify-between items-center mb-3">
-                          <h5 className="text-sm font-semibold text-gray-900">Chart Analytics</h5>
-                          <div className="text-xs text-gray-500">{waterStats.dataPoints} data points</div>
+                          <h5 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Chart Analytics</h5>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{waterStats.dataPoints} data points</div>
                         </div>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                          <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ArrowTrendingUpIcon className="w-4 h-4 text-green-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Total Usage</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">Total Usage</h6>
                             </div>
-                            <div className="text-sm font-bold text-green-600">{waterStats.totalConsumption}</div>
-                            <div className="text-xs text-gray-500">Selected period</div>
+                            <div className="text-sm font-bold text-green-600 dark:text-green-400">{waterStats.totalConsumption}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Selected period</div>
                           </div>
                           
-                          <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ChartBarIcon className="w-4 h-4 text-blue-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Average per day</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">Average per day</h6>
                             </div>
-                            <div className="text-sm font-bold text-blue-600">{waterStats.averagePerDay}</div>
-                            <div className="text-xs text-gray-500">Average usage</div>
+                            <div className="text-sm font-bold text-blue-600 dark:text-blue-400">{waterStats.averagePerDay}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Average usage</div>
                           </div>
                           
-                          <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ArrowTrendingUpIcon className="w-4 h-4 text-purple-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Peak Usage</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">Peak Usage</h6>
                             </div>
-                            <div className="text-sm font-bold text-purple-600">{waterStats.peakConsumption}</div>
-                            <div className="text-xs text-gray-500">Highest daily usage</div>
+                            <div className="text-sm font-bold text-purple-600 dark:text-purple-400">{waterStats.peakConsumption}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Highest daily usage</div>
                           </div>
                           
-                          <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <CalendarIcon className="w-4 h-4 text-yellow-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Data Points</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">Data Points</h6>
                             </div>
-                            <div className="text-sm font-bold text-yellow-600">{waterStats.dataPoints}</div>
-                            <div className="text-xs text-gray-500">Data periods</div>
+                            <div className="text-sm font-bold text-yellow-600 dark:text-yellow-400">{waterStats.dataPoints}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Data periods</div>
                           </div>
                         </div>
                       </div>
@@ -908,8 +1067,20 @@ export default function SiteDetailPage() {
               {hasData(gasData) && (() => {
                 const gasStats = calculateStats(gasData, 'gas');
                 return (
-                  <div className="bg-white rounded-lg shadow p-4 sm:p-6">
-                    <h4 className="text-sm font-semibold mb-2">Gas Usage (m³)</h4>
+                  <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
+                    <div className="flex justify-between items-center mb-2">
+                      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Gas Usage (m³)</h4>
+                      {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && (
+                        <button
+                          onClick={() => exportChartToCSV('gas', gasData, gasLabels)}
+                          className="px-2 py-1 text-xs rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-1"
+                          title={t('analytics.exportData')}
+                        >
+                          <ArrowDownTrayIcon className="w-3 h-3" />
+                          Export
+                        </button>
+                      )}
+                    </div>
                     <BarChart
                       xAxis={[{ data: gasLabels.map(d => {
                         const date = new Date(d);
@@ -921,46 +1092,46 @@ export default function SiteDetailPage() {
                     
                     {/* Chart Analytics */}
                     {gasStats && (
-                      <div className="mt-4 pt-4 border-t border-gray-200">
+                      <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                         <div className="flex justify-between items-center mb-3">
-                          <h5 className="text-sm font-semibold text-gray-900">Chart Analytics</h5>
-                          <div className="text-xs text-gray-500">{gasStats.dataPoints} data points</div>
+                          <h5 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Chart Analytics</h5>
+                          <div className="text-xs text-gray-500 dark:text-gray-400">{gasStats.dataPoints} data points</div>
                         </div>
                         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-                          <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ArrowTrendingUpIcon className="w-4 h-4 text-green-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Total Usage</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">Total Usage</h6>
                             </div>
-                            <div className="text-sm font-bold text-green-600">{gasStats.totalConsumption}</div>
-                            <div className="text-xs text-gray-500">Selected period</div>
+                            <div className="text-sm font-bold text-green-600 dark:text-green-400">{gasStats.totalConsumption}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Selected period</div>
                           </div>
                           
-                          <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ChartBarIcon className="w-4 h-4 text-blue-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Average per day</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">Average per day</h6>
                             </div>
-                            <div className="text-sm font-bold text-blue-600">{gasStats.averagePerDay}</div>
-                            <div className="text-xs text-gray-500">Average usage</div>
+                            <div className="text-sm font-bold text-blue-600 dark:text-blue-400">{gasStats.averagePerDay}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Average usage</div>
                           </div>
                           
-                          <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ArrowTrendingUpIcon className="w-4 h-4 text-purple-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Peak Usage</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">Peak Usage</h6>
                             </div>
-                            <div className="text-sm font-bold text-purple-600">{gasStats.peakConsumption}</div>
-                            <div className="text-xs text-gray-500">Highest daily usage</div>
+                            <div className="text-sm font-bold text-purple-600 dark:text-purple-400">{gasStats.peakConsumption}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Highest daily usage</div>
                           </div>
                           
-                          <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg p-3">
+                          <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <CalendarIcon className="w-4 h-4 text-yellow-500" />
-                              <h6 className="font-medium text-gray-900 text-xs">Data Points</h6>
+                              <h6 className="font-medium text-gray-900 dark:text-gray-100 text-xs">Data Points</h6>
                             </div>
-                            <div className="text-sm font-bold text-yellow-600">{gasStats.dataPoints}</div>
-                            <div className="text-xs text-gray-500">Data periods</div>
+                            <div className="text-sm font-bold text-yellow-600 dark:text-yellow-400">{gasStats.dataPoints}</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Data periods</div>
                           </div>
                         </div>
                       </div>
@@ -971,35 +1142,35 @@ export default function SiteDetailPage() {
 
               {/* Show message when no charts have data */}
               {!hasData(energyData) && !hasData(solarData) && !hasData(waterData) && !hasData(gasData) && (
-                <div className="col-span-full bg-white rounded-lg shadow p-8 text-center">
-                  <ChartBarIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 mb-2">No Device Data Available</h3>
-                  <p className="text-gray-500">
-                    No devices are currently sending data for the selected time period. Charts will appear here when devices are connected and transmitting data.
-                  </p>
-                </div>
+                              <div className="col-span-full bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
+                <ChartBarIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">{t('devices.noDeviceData')}</h3>
+                <p className="text-gray-500 dark:text-gray-400">
+                  {t('devices.noDeviceDataDescription')}
+                </p>
+              </div>
               )}
             </div>
           );
         })()}
         {/* Device Modal */}
         {isDeviceModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-            <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-lg relative">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 dark:bg-opacity-60">
+            <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg w-full max-w-lg relative">
               <button
-                className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 text-2xl"
+                className="absolute top-2 right-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-2xl"
                 onClick={() => setIsDeviceModalOpen(false)}
               >
                 &times;
               </button>
-              <h2 className="text-2xl font-bold mb-6 text-blue-700">
-                    {deviceModalMode === 'edit' ? 'Edit Device' : 'Create New Device'}
+              <h2 className="text-2xl font-bold mb-6 text-blue-700 dark:text-blue-400">
+                    {deviceModalMode === 'edit' ? t('devices.editDevice') : t('devices.createDevice')}
               </h2>
                 <form className="space-y-4" onSubmit={handleDeviceSubmit}>
                 <div>
-                  <label className="block font-semibold mb-1">Device ID</label> 
+                  <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('devices.deviceId')}</label> 
                   <input
-                    className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     type="text"
                     value={deviceForm.deviceId}
                     onChange={e => setDeviceForm({...deviceForm, deviceId: e.target.value})}
@@ -1008,9 +1179,9 @@ export default function SiteDetailPage() {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Name</label>
+                  <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.name')}</label>
                   <input
-                    className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     type="text"
                     value={deviceForm.name}
                     onChange={e => setDeviceForm({...deviceForm, name: e.target.value})}
@@ -1019,39 +1190,33 @@ export default function SiteDetailPage() {
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Type</label>
+                  <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.type')}</label>
                   <select
-                    className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     value={deviceForm.type}
                     onChange={e => setDeviceForm({...deviceForm, type: e.target.value})}
                     required
                   >
-                    <option value="energy">Energy</option>
-                    <option value="solar">Solar</option>
                     <option value="water">Water</option>
-                    <option value="gas">Gas</option>
-                    <option value="temperature">Temperature</option>
-                    <option value="humidity">Humidity</option>
-                    <option value="pressure">Pressure</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Status</label>
+                  <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.status')}</label>
                   <select
-                    className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     value={deviceForm.status}
                     onChange={e => setDeviceForm({...deviceForm, status: e.target.value})}
                     required
                   >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="maintenance">Maintenance</option>
+                    <option value="active">{t('dashboard.online')}</option>
+                    <option value="inactive">{t('dashboard.offline')}</option>
+                    <option value="maintenance">{t('dashboard.maintenance')}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold mb-1">Description</label>
+                  <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.description')}</label>
                   <textarea
-                    className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     value={deviceForm.description}
                     onChange={e => setDeviceForm({...deviceForm, description: e.target.value})}
                     placeholder="Device description (optional)"
@@ -1059,56 +1224,76 @@ export default function SiteDetailPage() {
                   />
                 </div>
                 <button
-                  className="w-full bg-blue-600 text-white py-2 rounded font-semibold hover:bg-blue-700 transition disabled:opacity-50"
+                  className="w-full bg-blue-600 dark:bg-blue-500 text-white py-2 rounded font-semibold hover:bg-blue-700 dark:hover:bg-blue-600 transition disabled:opacity-50"
                   type="submit"
                   disabled={loading}
                 >
                   {loading
                     ? deviceModalMode === 'edit'
-                      ? 'Updating...'
-                      : 'Creating...'
+                      ? t('common.updating')
+                      : t('common.creating')
                     : deviceModalMode === 'edit'
-                    ? 'Update Device'
-                    : 'Create Device'}
+                    ? t('devices.updateDevice')
+                    : t('devices.createDevice')}
                 </button>
               </form>
-                    {error && <div className="text-red-600 mt-4">{error}</div>}
+                    {error && <div className="text-red-600 dark:text-red-400 mt-4">{error}</div>}
             </div>
           </div>
         )}
         {/* Devices Section */}  
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6 relative">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6 relative">
           <div className="flex justify-between items-center mb-4">
-            <h3 className="text-lg font-semibold text-gray-900">Devices</h3>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Devices</h3>
             <div className="flex gap-2">
-                          <button
+                 {/*         <button
               onClick={() => router.push(`/dashboard/sites/${siteId}/devices/energy/energy`)}
               className="bg-yellow-500 text-white px-3 py-1 rounded text-sm hover:bg-yellow-600 transition-colors flex items-center gap-1"
             >
               <BoltIcon className="w-4 h-4" />
               Energy
-            </button>
-            <button
-              onClick={() => router.push(`/dashboard/sites/${siteId}/devices/solar/solar`)}
+            </button>*/}
+            {/*            <button
+              onClick={() => {
+                // Find the first solar device to navigate to
+                const solarDevice = site.devices?.find((d: any) => d.type === 'solar');
+                if (solarDevice) {
+                  router.push(`/dashboard/sites/${siteId}/devices/${solarDevice.deviceId}/solar`);
+                } else {
+                  // If no solar device exists, show an alert
+                  alert('No solar devices found in this site');
+                }
+              }}
               className="bg-orange-500 text-white px-3 py-1 rounded text-sm hover:bg-orange-600 transition-colors flex items-center gap-1"
             >
               <SunIcon className="w-4 h-4" />
               Solar
-            </button>
+            </button>*/}
+             {/*
             <button
-              onClick={() => router.push(`/dashboard/sites/${siteId}/devices/water/water`)}
+              onClick={() => {
+                // Find the first water device to navigate to
+                const waterDevice = site.devices?.find((d: any) => d.type === 'water');
+                if (waterDevice) {
+                  router.push(`/dashboard/sites/${siteId}/devices/${waterDevice.deviceId}/water`);
+                } else {
+                  // If no water device exists, show an alert
+                  alert('No water devices found in this site');
+                }
+              }}
               className="bg-blue-500 text-white px-3 py-1 rounded text-sm hover:bg-blue-600 transition-colors flex items-center gap-1"
             >
               <CloudIcon className="w-4 h-4" />
               Water
             </button>
-            <button
+            */}
+            {/*<button
               onClick={() => router.push(`/dashboard/sites/${siteId}/devices/gas/gas`)}
               className="bg-red-500 text-white px-3 py-1 rounded text-sm hover:bg-red-600 transition-colors flex items-center gap-1"
             >
               <FireIcon className="w-4 h-4" />
               Gas
-            </button>
+            </button>*/}
             </div>
           </div>
           {/* Floating Plus Button for Add Device (only for canConfigure) */}
@@ -1116,47 +1301,47 @@ export default function SiteDetailPage() {
             <button
               onClick={openCreateDeviceModal}
               className="bg-blue-600 text-white rounded-full w-10 h-10 flex items-center justify-center shadow-lg hover:bg-blue-700 transition-colors text-2xl fixed"
-              title="Add Device"
+              title={t('devices.addDevice')}
               style={{ position: 'fixed', right: '2rem', bottom: '2rem', zIndex: 1000 }}
             >
-              <span className="sr-only">Add Device</span>
+              <span className="sr-only">{t('devices.addDevice')}</span>
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
               </svg>
             </button>
           )}
-          {site.devices && site.devices.length > 0 ? (
+          {filteredDevices && filteredDevices.length > 0 ? (
             <div className="relative max-h-[32rem] overflow-y-auto">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 album-grid">
-                {site.devices.map((device: any) => (
-                  <div key={device.deviceId} className="border rounded-xl p-4 bg-white shadow hover:shadow-lg transition-all flex flex-col items-center album-card">
+                {filteredDevices.map((device: any) => (
+                  <div key={device.deviceId} className="border border-gray-200 dark:border-gray-600 rounded-xl p-4 bg-white dark:bg-gray-700 shadow hover:shadow-lg transition-all flex flex-col items-center album-card">
                     <div className="flex items-center justify-between w-full mb-2">
                       <h4 
-                        className="font-medium text-gray-900 text-sm truncate cursor-pointer hover:text-blue-600"
+                        className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate cursor-pointer hover:text-blue-600 dark:hover:text-blue-400"
                         onClick={() => router.push(`/dashboard/sites/${siteId}/devices/${device.deviceId}/${device.type}`)}
                         title="Click to view device details"
                       >
                         {device.name}
                       </h4>
                       <span className={`px-2 py-1 text-xs rounded-full ${
-                        device.status === 'active' ? 'bg-green-100 text-green-800' :
-                        device.status === 'maintenance' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
+                        device.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200' :
+                        device.status === 'maintenance' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200' :
+                        'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200'
                       }`}>
                         {device.status}
                       </span>
                     </div>
-                    <div className="space-y-1 text-xs text-gray-600 w-full">
+                    <div className="space-y-1 text-xs text-gray-600 dark:text-gray-400 w-full">
                       <div className="flex justify-between">
-                        <span>ID:</span>
-                        <span className="font-mono text-gray-800">{device.deviceId}</span>
+                        <span>{t('common.name')}:</span>
+                        <span className="font-mono text-gray-800 dark:text-gray-200">{device.deviceId}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Type:</span>
-                        <span className="capitalize text-gray-800">{device.type}</span>
+                        <span>{t('common.type')}:</span>
+                        <span className="capitalize text-gray-800 dark:text-gray-200">{device.type}</span>
                       </div>
                       {device.description && (
-                        <div className="text-xs text-gray-500 truncate" title={device.description}>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 truncate" title={device.description}>
                           {device.description}
                         </div>
                       )}
@@ -1164,23 +1349,23 @@ export default function SiteDetailPage() {
                     <div className="mt-2 flex flex-col sm:flex-row gap-2 w-full">
                       <button
                         onClick={() => router.push(`/dashboard/sites/${siteId}/devices/${device.deviceId}/${device.type}`)}   
-                        className="bg-blue-500 text-white px-2 py-1 rounded text-xs hover:bg-blue-600 transition-colors w-full"
+                        className="bg-blue-500 dark:bg-blue-600 text-white px-2 py-1 rounded text-xs hover:bg-blue-600 dark:hover:bg-blue-700 transition-colors w-full"
                       >
-                        View Details
+                        {t('common.view')} {t('common.status')}
                       </button>
                       {canConfigure && (
                         <>
                           <button
                             onClick={() => openEditDeviceModal(device)}
-                            className="bg-yellow-400 px-2 py-1 rounded text-xs hover:bg-yellow-500 transition-colors w-full"
+                            className="bg-yellow-400 dark:bg-yellow-500 px-2 py-1 rounded text-xs hover:bg-yellow-500 dark:hover:bg-yellow-600 transition-colors w-full"
                           >
-                            Edit
+                            {t('common.edit')}
                           </button>
                           <button
                             onClick={() => handleDeleteDevice(device.deviceId)}
-                            className="bg-red-500 text-white px-2 py-1 rounded text-xs hover:bg-red-600 transition-colors w-full"
+                            className="bg-red-500 dark:bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-600 dark:hover:bg-red-700 transition-colors w-full"
                           >
-                            Delete
+                            {t('common.delete')}
                           </button>
                         </>
                       )}
@@ -1190,9 +1375,9 @@ export default function SiteDetailPage() {
               </div>
             </div>
           ) : (
-            <div className="text-center py-8 text-gray-500">
-              <div className="text-lg font-medium mb-2">No devices assigned</div>
-              <div className="text-sm">This site doesn't have any devices yet.</div>
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              <div className="text-lg font-medium mb-2 dark:text-gray-300">{t('devices.noDevices')}</div>
+              <div className="text-sm dark:text-gray-400">{t('devices.noDevices')}</div>
             </div>
           )}
         </div>

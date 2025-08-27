@@ -21,15 +21,32 @@ npm install
 
 ### 2. Environment Variables
 
-Create a `.env` file in the backend directory:
+Create a `.env` file in the backend directory. You can use `env-config.example` as a template:
 
 ```env
-MONGO_URI=mongodb://localhost:27017/iot_dashboard
-JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
-PORT=5000
-CORS_ORIGIN=http://localhost:3000
+# SMTP Configuration for Email Notifications
+SMTP_HOST=ssl0.ovh.net
+SMTP_PORT=465
+SMTP_SECURE=true
+SMTP_USER=your-email@domain.com
+SMTP_PASS=your-password
+SMTP_FROM=your-email@domain.com
+
+# Database Configuration
+MONGODB_URI=mongodb://localhost:27017/iot_dashboard
+
+# Server Configuration
+PORT=8001
 NODE_ENV=development
+
+# JWT Secret (for authentication)
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+
+# CORS Configuration
+CORS_ORIGIN=http://localhost:8000
 ```
+
+**Important:** Replace the SMTP credentials with your actual email provider details.
 
 ### 3. Start the Server
 
@@ -59,6 +76,17 @@ The server will start on `http://localhost:5000`
 - `GET /` - API information
 
 ## Testing the API
+
+### Email Configuration Test
+
+Test your SMTP configuration:
+
+```bash
+# Test SMTP connection and send a test email
+node test-ovh-email.js
+```
+
+This will verify your SMTP settings and send a test email to verify everything is working.
 
 ### 1. Create a Test User
 

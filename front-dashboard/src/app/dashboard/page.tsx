@@ -21,9 +21,9 @@ export default async function DashboardPage() {
     email: session.user?.email
   });
 
-  // Redirect users and installators to their first site
-  if (session.user?.role === 'user' || session.user?.role === 'installator') {
-    console.log('User/Installator detected, redirecting to their first site...');
+  // Redirect users and techniciens to their first site
+  if (session.user?.role === 'user' || session.user?.role === 'technicien') {
+    console.log('User/Technicien detected, redirecting to their first site...');
     
     // First try to get user-specific sites
     let sites = [];

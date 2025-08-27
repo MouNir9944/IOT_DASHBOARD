@@ -273,7 +273,7 @@ app.get('/api/mqtt/status', (req, res) => {
 // Test connection to main manager
 app.get('/api/test-main-manager', async (req, res) => {
   try {
-    const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:5000';
+    const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:8001';
     console.log(`🔍 Testing connection to main manager at: ${mainManagerUrl}`);
     
     const response = await fetch(`${mainManagerUrl}/ping`, {
@@ -306,7 +306,7 @@ app.get('/api/test-main-manager', async (req, res) => {
     res.status(500).json({
       success: false,
       message: `Main manager connection error: ${error.message}`,
-      mainManagerUrl: process.env.MAIN_MANAGER_URL || 'http://localhost:5000'
+      mainManagerUrl: process.env.MAIN_MANAGER_URL || 'http://localhost:8001'
     });
   }
 });
@@ -424,7 +424,7 @@ app.post('/api/devices/:deviceId/alerts/:alertId/assign-users', async (req, res)
 // Get users and groups for assignment
 app.get('/api/users-groups', async (req, res) => {
   try {
-    const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:5000';
+    const mainManagerUrl = process.env.MAIN_MANAGER_URL || 'http://localhost:8001';
     
     // Fetch users
     const usersResponse = await fetch(`${mainManagerUrl}/api/users`, {

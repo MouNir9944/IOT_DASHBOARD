@@ -3,15 +3,13 @@ import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import DashboardLayout from '../../../../../components/DashboardLayout';
 import { useSession } from 'next-auth/react';
+import { useLanguage } from '../../../../../../../contexts/LanguageContext';
 import { io, Socket } from 'socket.io-client';
 import { 
   ChartBarIcon, 
-  BoltIcon, 
-  SunIcon, 
   CloudIcon,
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
-  FireIcon,
   ClockIcon,
   CheckCircleIcon,
   ExclamationTriangleIcon,
@@ -43,7 +41,7 @@ interface LastReading {
 interface Device {
   _id: string;
   deviceId: string;
-  type: 'energy' | 'solar' | 'water' | 'gas' | 'temperature' | 'humidity' | 'pressure';
+  type: 'water' | 'temperature' | 'humidity' | 'pressure';
   name: string;
   description?: string;
   status: 'active' | 'inactive' | 'maintenance';
@@ -91,39 +89,108 @@ interface DeviceStatsResponse {
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites'; // TODO: change to /api/sites/data/site/{siteId}/devices?type={type}
 
-const timePeriods = [
-  { label: '7d', value: '7d', granularity: 'day' },
-  { label: '30d', value: '30d', granularity: 'day' },
-  { label: 'Custom', value: 'custom', granularity: 'day' }
-];
+
 const SITES_API_URL = process.env.NEXT_PUBLIC_BACKEND_URL + '/api/sites';
 
 // Add debugging info
 console.log('🔧 API Configuration:', { API_URL, SITES_API_URL });
 
+// Utility function to handle name-based routing
+const resolveNameToId = async (siteNameOrId: string, deviceNameOrId: string) => {
+  try {
+    // First, try to find the site by name or ID
+    let siteId = siteNameOrId;
+    let site = null;
+    
+    // If it looks like an ObjectID (24 character hex string), use it directly
+    if (/^[0-9a-fA-F]{24}$/.test(siteNameOrId)) {
+      siteId = siteNameOrId;
+    } else {
+      // Try to find site by name
+      const sitesResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/sites`);
+      if (sitesResponse.ok) {
+        const sites = await sitesResponse.json();
+        const foundSite = sites.find((s: any) => 
+          s.name.toLowerCase() === siteNameOrId.toLowerCase() ||
+          s.name.toLowerCase().replace(/\s+/g, '-') === siteNameOrId.toLowerCase()
+        );
+        if (foundSite) {
+          siteId = foundSite._id;
+          site = foundSite;
+        }
+      }
+    }
+    
+    // Now find the device by name or ID
+    let deviceId = deviceNameOrId;
+    
+    // If we don't have the site data yet, fetch it
+    if (!site) {
+      const siteResponse = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/sites/${siteId}`);
+      if (siteResponse.ok) {
+        site = await siteResponse.json();
+      }
+    }
+    
+    if (site && site.devices) {
+      // If it looks like a device ID (contains colons for MAC addresses), use it directly
+      if (deviceNameOrId.includes(':')) {
+        deviceId = deviceNameOrId;
+      } else {
+        // Try to find device by name
+        const foundDevice = site.devices.find((d: any) => 
+          d.name.toLowerCase() === deviceNameOrId.toLowerCase() ||
+          d.name.toLowerCase().replace(/\s+/g, '-') === deviceNameOrId.toLowerCase()
+        );
+        if (foundDevice) {
+          deviceId = foundDevice.deviceId;
+        }
+      }
+    }
+    
+    return { siteId, deviceId, site };
+  } catch (error) {
+    console.error('Error resolving names to IDs:', error);
+    return { siteId: siteNameOrId, deviceId: deviceNameOrId, site: null };
+  }
+};
+
 export default function DeviceDetailPage() {
   const params = useParams();
+  const { t } = useLanguage();
   const router = useRouter();
+  
+  const timePeriods = [
+    { label: '7d', value: '7d', granularity: 'day' },
+    { label: '30d', value: '30d', granularity: 'day' },
+    { label: t('common.custom'), value: 'custom', granularity: 'day' }
+  ];
+  
+  // Debug: Log all parameters received
+  console.log('🔍 All params received:', params);
+  console.log('🔍 Params keys:', Object.keys(params || {}));
+  console.log('🔍 Raw deviceId param:', params?.deviceId);
+  console.log('🔍 Raw siteId param:', params?.siteId);
+  
   const siteId = params?.siteId as string;
-  const rawDeviceId = params?.deviceid as string; // Note: lowercase 'deviceid' to match folder name  
-  const deviceId = rawDeviceId ? decodeURIComponent(rawDeviceId) : ''; // Decode URL-encoded device ID
+  // Decode the device ID to handle URL encoding (colons get encoded as %3A)
+  const deviceId = decodeURIComponent(params?.deviceId as string);
   
-  // Debug URL parameters
-  console.log('🔍 URL Parameters extracted:', { 
-    params, 
-    siteId, 
-    rawDeviceId,
-    deviceId: deviceId,
-    allParamsKeys: Object.keys(params || {})
-  });
+  // Debug: Log extracted values
+  console.log('🔍 Extracted siteId:', siteId);
+  console.log('🔍 Extracted deviceId:', deviceId);
+  console.log('🔍 DeviceId type:', typeof deviceId);
+  console.log('🔍 DeviceId length:', deviceId?.length);
   
+  // State for site data
   const [site, setSite] = useState<Site | null>(null);
   const [device, setDevice] = useState<Device | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  
   const [historicalData, setHistoricalData] = useState<HistoricalDataPoint[]>([]);
   const [deviceStats, setDeviceStats] = useState<DeviceStatsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
   const [statsLoading, setStatsLoading] = useState(false);
-  const [error, setError] = useState('');
   const [configMode, setConfigMode] = useState(false);
   const [configData, setConfigData] = useState<Partial<Device>>({});
   
@@ -195,6 +262,15 @@ export default function DeviceDetailPage() {
   const [waterMetricsCustomTo, setWaterMetricsCustomTo] = useState<Date | null>(null);
   const [showWaterMetricsCustomPicker, setShowWaterMetricsCustomPicker] = useState(false);
   const [waterMetricsRealtimeMode, setWaterMetricsRealtimeMode] = useState(true); // Always true for real-time mode
+  
+  // Export time range selection state
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportFrom, setExportFrom] = useState<Date | null>(null);
+  const [exportTo, setExportTo] = useState<Date | null>(null);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState('');
+  const [exportSamplingInterval, setExportSamplingInterval] = useState(1); // Sampling interval in minutes
   
   // Water metrics time periods
   const waterMetricsTimePeriods = [
@@ -322,30 +398,40 @@ export default function DeviceDetailPage() {
     return { historicalData, realtimeData };
   };
 
-  // Get date range based on selected period (using site page approach)
+  // Get date range based on selected period (using UTC time)
   const getDateRange = () => {
     const now = new Date();
-    const to = now.toISOString();
-    let from: string;
     
+    // Use UTC time for consistent boundaries
+    const utcNow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+    const to = utcNow.toISOString();
+    let from: string;
+
     switch (selectedPeriod) {
       case '7d':
-        from = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString();
+        // Calculate exactly 7 days ago in UTC
+        const sevenDaysAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6, 0, 0, 0, 0));
+        from = sevenDaysAgo.toISOString();
         break;
       case '30d':
-        from = new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000).toISOString();
+        // Calculate exactly 30 days ago in UTC
+        const thirtyDaysAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 29, 0, 0, 0, 0));
+        from = thirtyDaysAgo.toISOString();
         break;
       case 'custom':
         if (customFrom && customTo) {
           return { from: customFrom.toISOString(), to: customTo.toISOString() };
         }
-        from = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString();
+        // Fallback to 7d if custom dates not set
+        const fallbackDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6, 0, 0, 0, 0));
+        from = fallbackDate.toISOString();
         break;
       default:
-        from = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString();
+        const defaultDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6, 0, 0, 0, 0));
+        from = defaultDate.toISOString();
     }
     
-    console.log('📅 Date range calculated (site page approach):', { 
+    console.log('📅 Date range calculated (UTC approach):', { 
       from, 
       to, 
       selectedPeriod,
@@ -383,7 +469,7 @@ export default function DeviceDetailPage() {
     }
 
     const csvData = [];
-    csvData.push(['Date', 'Time', `${device?.type === 'energy' ? 'Energy' : device?.type === 'solar' ? 'Solar' : device?.type === 'water' ? 'Water' : device?.type === 'gas' ? 'Gas' : 'Consumption'} (${device?.type === 'energy' || device?.type === 'solar' ? 'kWh' : device?.type === 'water' || device?.type === 'gas' ? 'm³' : 'units'})`, 'Total Consumption']);
+            csvData.push([t('common.date'), t('common.time'), `${t('parameters.consumption')} ${t('devices.water')} (${t('units.cubicMeters')})`, t('analytics.totalConsumption')]);
     
     let totalConsumption = 0;
     for (let i = 0; i < chartLabels.length; i++) {
@@ -424,38 +510,171 @@ export default function DeviceDetailPage() {
     document.body.removeChild(link);
   };
 
-  // Export historical data to CSV
-  const exportHistoricalData = () => {
+  // Handle export button click - show modal
+  const handleExportClick = () => {
+    setShowExportModal(true);
+    // Reset sampling interval to default when opening modal
+    setExportSamplingInterval(1);
+  };
+
+  // Export historical data to CSV with time range selection and consumption data
+  const exportHistoricalData = async () => {
     if (!device || device.type !== 'water') {
-      alert('Historical data export is only available for water devices');
+      alert(t('analytics.historicalDataExportOnlyWater'));
       return;
     }
 
-    const csvData = [];
-    csvData.push(['Date', 'Time', 'Flow Rate (L/min)', 'Pressure (bar)', 'Temperature (°C)']);
+    // Check if export time range is set
+    if (!exportFrom || !exportTo) {
+      alert(t('analytics.pleaseSelectExportTimeRange'));
+      return;
+    }
     
-    // Get the maximum length of all data arrays
-    const maxLength = Math.max(
-      combinedChartData.flowRate.data.length,
-      combinedChartData.pressure.data.length,
-      combinedChartData.temperature.data.length
-    );
+    // Validate dates
+    if (exportFrom >= exportTo) {
+      alert(t('analytics.startDateMustBeBeforeEndDate'));
+      return;
+    }
     
-    for (let i = 0; i < maxLength; i++) {
-      const flowRate = combinedChartData.flowRate.data[i] || 0;
-      const pressure = combinedChartData.pressure.data[i] || 0;
-      const temperature = combinedChartData.temperature.data[i] || 0;
+    const startDate = exportFrom;
+    const endDate = exportTo;
+
+    // Estimate export size and warn user if it's large
+    const sizeEstimate = estimateExportSize(startDate, endDate, exportSamplingInterval);
+    
+    if (sizeEstimate.isLarge) {
+              const confirmLarge = confirm(
+          `⚠️ ${t('analytics.largeExportWarning')} ⚠️\n\n` +
+          `${t('analytics.estimatedData')}: ${sizeEstimate.dataPoints.toLocaleString()} ${t('analytics.dataPoints')}\n` +
+          `${t('analytics.estimatedFileSize')}: ${sizeEstimate.fileSizeMB.toFixed(1)} MB\n` +
+          `${t('common.time')} ${t('common.range')}: ${sizeEstimate.hours.toFixed(1)} ${t('time.hours')}\n` +
+          `${t('analytics.samplingInterval')}: Every ${exportSamplingInterval} minute(s)\n\n` +
+          `${t('analytics.exportMayTakeWhile')} ${t('analytics.continueAnyway')}?`
+        );
       
-      let timestamp = null;
-      if (combinedChartData.flowRate.timestamps[i]) {
-        timestamp = new Date(combinedChartData.flowRate.timestamps[i]);
-      } else if (combinedChartData.pressure.timestamps[i]) {
-        timestamp = new Date(combinedChartData.pressure.timestamps[i]);
-      } else if (combinedChartData.temperature.timestamps[i]) {
-        timestamp = new Date(combinedChartData.temperature.timestamps[i]);
+      if (!confirmLarge) {
+        return;
+      }
+    }
+
+    try {
+      setIsExporting(true);
+      setExportStatus(t('analytics.fetchingData'));
+      setExportProgress(0);
+      
+      // For large datasets, use pagination to avoid memory issues
+      const CHUNK_SIZE = 5000; // Process 5000 records at a time
+      let allData: any[] = [];
+      let offset = 0;
+      let hasMoreData = true;
+      
+      while (hasMoreData) {
+        setExportStatus(`${t('analytics.fetchingDataChunk')} ${Math.floor(offset / CHUNK_SIZE) + 1}...`);
+        
+        const queryParams = new URLSearchParams({
+          from: startDate.toISOString(),
+          to: endDate.toISOString(),
+          limit: CHUNK_SIZE.toString(),
+          offset: offset.toString()
+        });
+        
+        const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/device/${deviceId}/historical?${queryParams}`;
+        console.log(`📊 Fetching data chunk: offset=${offset}, limit=${CHUNK_SIZE}`);
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch data chunk: ${response.status}`);
+        }
+        
+        const chunkData = await response.json();
+        const chunk = chunkData.data || [];
+        
+        if (chunk.length === 0) {
+          hasMoreData = false;
+        } else {
+          allData = [...allData, ...chunk];
+          offset += chunk.length;
+          
+          // Update progress
+          const progress = Math.min((offset / (sizeEstimate.dataPoints * 1.2)) * 100, 90); // Estimate progress
+          setExportProgress(progress);
+          
+          // If we've fetched enough data or hit a reasonable limit, stop
+          if (allData.length >= 100000) { // Max 100k records
+            console.log('⚠️ Reached maximum export limit of 100,000 records');
+            break;
+          }
+        }
       }
       
-      if (timestamp) {
+      console.log('📊 Total data fetched for export:', allData.length, 'data points');
+      
+      // Debug: Log the structure of the first data item to see available fields
+      if (allData.length > 0) {
+        console.log('🔍 First data item structure:', allData[0]);
+        console.log('🔍 Available fields:', Object.keys(allData[0]));
+        console.log('🔍 Sample values:', {
+          flowRate: allData[0].flowRate,
+          pressure: allData[0].pressure,
+          temperature: allData[0].temperature,
+          consumption: allData[0].consumption,
+          value: allData[0].value,
+          totalIndex: allData[0].totalIndex,
+          waterConsumption: allData[0].waterConsumption,
+          volume: allData[0].volume
+        });
+      }
+      
+      if (allData.length === 0) {
+        alert(t('analytics.noDataFoundForTimeRange'));
+        return;
+      }
+      
+      // Prepare CSV data with consumption from database
+      setExportStatus(t('analytics.processingData'));
+      setExportProgress(95);
+      
+      const csvData = [];
+      csvData.push([t('common.date'), t('common.time'), `${t('parameters.flow')} (${t('units.liters')}/s)`, `${t('parameters.pressure')} (${t('units.bar')})`, `${t('parameters.temperature')} (${t('units.celsius')})`, `${t('parameters.consumption')} (${t('units.cubicMeters')})`]);
+      
+      // Sort data by timestamp to ensure chronological order
+      const sortedData = allData.sort((a: any, b: any) => a.timestamp - b.timestamp);
+      
+      // Apply sampling to reduce data points based on user selection
+      const sampledData = applyDataSampling(sortedData, exportSamplingInterval);
+      
+      console.log('🔍 Data sampling applied:', {
+        originalDataPoints: sortedData.length,
+        sampledDataPoints: sampledData.length,
+        samplingInterval: exportSamplingInterval,
+        reduction: ((1 - sampledData.length / sortedData.length) * 100).toFixed(1) + '%'
+      });
+      
+      // Debug: Log the first few items to see what fields are available
+      console.log('🔍 Sample data items for export:', sampledData.slice(0, 3));
+      
+      for (let i = 0; i < sampledData.length; i++) {
+        const item = sampledData[i];
+        const flowRate = item.flowRate || 0;
+        const pressure = item.pressure || 0;
+        const temperature = item.temperature || 0;
+        
+        // Try different possible consumption field names from the database
+        let consumption = 0;
+        if (item.consumption !== undefined && item.consumption !== null) {
+          consumption = item.consumption;
+        } else if (item.value !== undefined && item.value !== null) {
+          consumption = item.value;
+        } else if (item.totalIndex !== undefined && item.totalIndex !== null) {
+          consumption = item.totalIndex;
+        } else if (item.waterConsumption !== undefined && item.waterConsumption !== null) {
+          consumption = item.waterConsumption;
+        } else if (item.volume !== undefined && item.volume !== null) {
+          consumption = item.volume;
+        }
+        
+        const timestamp = new Date(item.timestamp);
+        
         const dateStr = timestamp.toLocaleDateString('en-US', {
           year: 'numeric',
           month: '2-digit',
@@ -473,31 +692,68 @@ export default function DeviceDetailPage() {
           timeStr,
           flowRate.toFixed(3),
           pressure.toFixed(3),
-          temperature.toFixed(3)
+          temperature.toFixed(1),
+          consumption.toFixed(6)
         ]);
       }
+      
+      // Debug: Log the consumption values being exported
+      console.log('🔍 Consumption values in export:', csvData.slice(1, 4).map(row => row[5]));
+      
+      // Generate filename with time range and sampling interval
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+      const samplingStr = exportSamplingInterval > 1 ? `_sampled_${exportSamplingInterval}min` : '';
+      const filename = `${device?.name || device?.deviceId}_historical_data_${startDateStr}_to_${endDateStr}${samplingStr}_${new Date().toISOString().split('T')[0]}.csv`;
+      
+      setExportStatus(t('analytics.generatingFile'));
+      setExportProgress(98);
+      
+      const csvContent = csvData.map(row => row.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url2 = URL.createObjectURL(blob);
+      link.setAttribute('href', url2);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      setExportProgress(100);
+      setExportStatus(t('analytics.exportCompleted'));
+      
+      console.log('✅ Historical data exported successfully:', {
+        filename,
+        dataPoints: csvData.length - 1, // Exclude header
+        timeRange: `${startDate.toLocaleString()} to ${endDate.toLocaleString()}`
+      });
+      
+      // Auto-hide status after 3 seconds
+      setTimeout(() => {
+        setIsExporting(false);
+        setExportProgress(0);
+        setExportStatus('');
+      }, 3000);
+      
+    } catch (error) {
+      console.error('❌ Error exporting historical data:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      alert(`Failed to export data: ${errorMessage}`);
+      setIsExporting(false);
+      setExportProgress(0);
+      setExportStatus('');
     }
-    
-    const csvContent = csvData.map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `${device?.name || device?.deviceId}_historical_data_${waterMetricsPeriod}_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
-  // Helper to generate period labels between two dates (using site page approach)
+  // Helper to generate period labels between two dates (matching dashboard approach)
   function generatePeriodLabels(from: string, to: string, granularity: string) {
     const start = new Date(from);
     const end = new Date(to);
     const labels: string[] = [];
     let current = new Date(start);
     
-    console.log('🔍 generatePeriodLabels (site page approach):', {
+    console.log('🔍 generatePeriodLabels (dashboard approach):', {
       from,
       to,
       startDate: start.toISOString().slice(0, 10),
@@ -506,23 +762,37 @@ export default function DeviceDetailPage() {
       granularity
     });
     
-    while (current <= end) {
-      if (granularity === 'day') {
-        labels.push(current.toISOString().slice(0, 10));
-        current.setDate(current.getDate() + 1);
-      } else if (granularity === 'month') {
+    // For daily granularity, ensure we get exactly the right number of days
+    if (granularity === 'day') {
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      console.log('📅 Days difference:', daysDiff);
+      
+      for (let i = 0; i <= daysDiff; i++) {
+        const date = new Date(start);
+        date.setDate(start.getDate() + i);
+        labels.push(date.toISOString().slice(0, 10));
+      }
+    } else if (granularity === 'month') {
+      while (current <= end) {
         labels.push(current.toISOString().slice(0, 7));
         current.setMonth(current.getMonth() + 1);
-      } else if (granularity === 'year') {
+      }
+    } else if (granularity === 'year') {
+      while (current <= end) {
         labels.push(current.getFullYear().toString());
         current.setFullYear(current.getFullYear() + 1);
-      } else {
-        labels.push(current.toISOString().slice(0, 10));
-        current.setDate(current.getDate() + 1);
+      }
+    } else {
+      // Default to daily
+      const daysDiff = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      for (let i = 0; i <= daysDiff; i++) {
+        const date = new Date(start);
+        date.setDate(start.getDate() + i);
+        labels.push(date.toISOString().slice(0, 10));
       }
     }
     
-    console.log('📊 Period labels generated (site page approach):', {
+    console.log('📊 Period labels generated (dashboard approach):', {
       labelsCount: labels.length,
       firstLabel: labels[0],
       lastLabel: labels[labels.length - 1],
@@ -569,17 +839,8 @@ export default function DeviceDetailPage() {
     let unit = '';
     
     switch (type) {
-      case 'energy':
-      case 'solar':
-        formattedValue = value.toFixed(1);
-        unit = ' kWh';
-        break;
       case 'water':
         formattedValue = value.toFixed(3);
-        unit = ' m³';
-        break;
-      case 'gas':
-        formattedValue = value.toFixed(1);
         unit = ' m³';
         break;
       case 'temperature':
@@ -595,20 +856,18 @@ export default function DeviceDetailPage() {
         unit = ' bar';
         break;
       default:
-        formattedValue = value.toString();
+        formattedValue = value.toFixed(3);
+        unit = ' m³';
     }
     
     return showUnit ? formattedValue + unit : formattedValue;
   }
 
-  // Get device type icon
+  // Get device type icon - only for water devices
   const getTypeIcon = (type: string, className = "w-6 h-6") => {
     switch (type) {
-      case 'energy': return <BoltIcon className={`${className} text-blue-500`} />;
-      case 'solar': return <SunIcon className={`${className} text-yellow-500`} />;
       case 'water': return <CloudIcon className={`${className} text-blue-400`} />;
-      case 'gas': return <FireIcon className={`${className} text-red-500`} />;
-      default: return <ChartBarIcon className={`${className} text-gray-500`} />;
+      default: return <CloudIcon className={`${className} text-blue-400`} />;
     }
   };
 
@@ -702,24 +961,34 @@ export default function DeviceDetailPage() {
           console.log('📊 First data item:', data[0]);
           console.log('📊 Sample totalIndex values:', data.map((d: DeviceStatsDataPoint) => d.totalIndex));
         }
-        setDeviceStats({ data: data, deviceId, siteId, granularity });
+        setDeviceStats({ data: data, deviceId: deviceId, siteId: siteId, granularity });
         
-        // Process data using site page pattern
+        // Process data using dashboard pattern for consistency
         console.log('📊 Raw API response:', data);
         const filled = Array.isArray(data) ? data : [];
         console.log('📊 Filled data:', filled);
         
-        // Map period to value using site page approach
-        const valueMap = new Map(filled.map((v: any) => [v.period, v.totalIndex ?? v.consumption ?? v.total ?? v.value ?? 0]));
-        const chartDataArray = periodLabels.map(label => valueMap.get(label) ?? 0);
+        // Map period to value using dashboard approach - ensure exact period matching
+        const valueMap = new Map();
+        filled.forEach((v: any) => {
+          const period = v.period;
+          const value = v.totalIndex ?? v.consumption ?? v.total ?? v.value ?? 0;
+          valueMap.set(period, value);
+        });
+        
+        // Create chart data array with exact period matching
+        const chartDataArray = periodLabels.map(label => {
+          const value = valueMap.get(label);
+          return value !== undefined ? value : 0;
+        });
       
-      console.log('🔍 Period matching debug:');
+      console.log('🔍 Period matching debug (dashboard approach):');
       console.log('- Generated labels:', periodLabels);
       console.log('- API periods:', filled.map(d => d.period));
       console.log('- Value map:', Array.from(valueMap.entries()));
       console.log('- Chart data after mapping:', chartDataArray);
       console.log('- Non-zero values count:', chartDataArray.filter(v => v > 0).length);
-      console.log('- 🎯 EXPECTED: Chart should show data for dates that match API periods');
+      console.log('- 🎯 EXPECTED: Chart should show data for dates that match API periods exactly');
       
       // Detailed label vs API period comparison
       console.log('🔍 DETAILED PERIOD COMPARISON:');
@@ -751,88 +1020,166 @@ export default function DeviceDetailPage() {
         valueMap: Array.from(valueMap.entries())
       });
       
-      // Ensure chart data array has exactly the expected length
-      const expectedLength = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : periodLabels.length;
-      if (chartDataArray.length !== expectedLength) {
-        console.warn(`⚠️ Chart data length mismatch: Expected ${expectedLength}, got ${chartDataArray.length}`);
-        // Pad or truncate to match expected length
-        if (chartDataArray.length < expectedLength) {
-          const paddedArray = [...chartDataArray, ...Array(expectedLength - chartDataArray.length).fill(0)];
-          setChartData(paddedArray);
-          console.log(`🔧 Padded chart data to ${paddedArray.length} elements`);
-        } else {
-          const truncatedArray = chartDataArray.slice(0, expectedLength);
-          setChartData(truncatedArray);
-          console.log(`🔧 Truncated chart data to ${truncatedArray.length} elements`);
-        }
-      } else {
-        setChartData(chartDataArray);
-      }
-      
-      // Ensure chart labels have exactly the expected length
-      const expectedLabels = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : periodLabels.length;
-      if (periodLabels.length !== expectedLabels) {
-        console.warn(`⚠️ Chart labels length mismatch: Expected ${expectedLabels}, got ${periodLabels.length}`);
-        // Generate corrected labels
-        const correctedLabels: string[] = [];
-        const startDate = new Date(from);
+      // Use the exact same fillMissingPeriods logic as dashboard for consistency
+      const fillMissingPeriods = (data: any[], fromDate: string, toDate: string, granularity: string) => {
+        const startDate = new Date(fromDate);
+        const endDate = new Date(toDate);
+        const periods: { [key: string]: number } = {};
+        const labels: string[] = [];
         
-        for (let i = 0; i < expectedLabels; i++) {
-          const currentDate = new Date(startDate);
-          currentDate.setDate(startDate.getDate() + i);
-          correctedLabels.push(currentDate.toLocaleDateString('en-US', { 
-            month: 'short', 
-            day: 'numeric'
-          }));
+        console.log('fillMissingPeriods called with:', { fromDate, toDate, granularity, dataLength: data.length });
+        console.log('Date range:', { startDate: startDate.toISOString(), endDate: endDate.toISOString() });
+        
+        // Initialize all periods with zero
+        let currentDate = new Date(startDate);
+        while (currentDate <= endDate) {
+          let periodKey: string;
+          let label: string;
+          
+          switch (granularity) {
+            case 'day':
+              // Use consistent date format that matches backend expectations
+              periodKey = currentDate.toISOString().slice(0, 10);
+              label = currentDate.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric' 
+              });
+              currentDate.setDate(currentDate.getDate() + 1);
+              break;
+            case 'week':
+              // Get ISO week
+              const year = currentDate.getFullYear();
+              const week = Math.ceil((currentDate.getTime() - new Date(year, 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
+              periodKey = `${year}-W${week.toString().padStart(2, '0')}`;
+              label = `Week ${week}`;
+              currentDate.setDate(currentDate.getDate() + 7);
+              break;
+            case 'month':
+              periodKey = currentDate.toISOString().slice(0, 7) + '-01T00:00:00.000Z';
+              label = currentDate.toLocaleDateString('en-US', { 
+                month: 'short', 
+                year: 'numeric' 
+              });
+              currentDate.setMonth(currentDate.getMonth() + 1);
+              break;
+            default:
+              periodKey = currentDate.toISOString().slice(0, 10);
+              label = currentDate.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric' 
+              });
+              currentDate.setDate(currentDate.getDate() + 1);
+          }
+          
+          periods[periodKey] = 0;
+          labels.push(label);
         }
         
-        setChartLabels(correctedLabels);
-        console.log(`🔧 Set corrected chart labels: ${correctedLabels.length} labels`);
-      } else {
-        setChartLabels(periodLabels);
-      }
+        console.log('Initialized periods:', periods);
+        console.log('Initialized labels:', labels);
+        
+        // Fill in actual data - handle both period and date formats from backend
+        data.forEach(item => {
+          let key = item.period;
+          
+          // If the backend returns a date instead of period, convert it to our period format
+          if (item.date) {
+            const itemDate = new Date(item.date);
+            key = itemDate.toISOString().slice(0, 10);
+          }
+          
+          console.log('Processing item:', item, 'key:', key, 'periods has key:', periods.hasOwnProperty(key));
+          
+          // Also handle cases where the backend might return the period in a different format
+          if (periods.hasOwnProperty(key)) {
+            periods[key] = item.totalIndex || item.total || item.value || 0;
+          }
+        });
+        
+        console.log('After filling data, periods:', periods);
+        
+        // Convert to sorted array
+        const sortedEntries = Object.entries(periods)
+          .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime());
+        
+        const result = {
+          values: sortedEntries.map(([_, total]) => total),
+          labels: labels
+        };
+        
+        console.log('Final result:', result);
+        return result;
+      };
       
-      console.log('📊 Chart data prepared:', chartDataArray.length, 'data points');
+      // Apply the same fillMissingPeriods logic as dashboard
+      const filledData = fillMissingPeriods(filled, from, to, granularity);
+      console.log('📊 Data after fillMissingPeriods:', filledData);
+      
+      setChartData(filledData.values);
+      setChartLabels(filledData.labels);
+      
+      console.log('📊 Chart data prepared:', filledData.values.length, 'data points');
       
       // Also convert to historical data format for backward compatibility
-      const historicalPoints: HistoricalDataPoint[] = filled.map((item) => ({
-        timestamp: item.period,
-        value: item.totalIndex || item.lastReading || item.consumption || 0,
+      const historicalPoints: HistoricalDataPoint[] = filledData.values.map((value, index) => ({
+        timestamp: filledData.labels[index],
+        value: value,
         period: granularity === 'hour' ? 
-          new Date(item.period).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) :
-          new Date(item.period).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+          new Date(filledData.labels[index]).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) :
+          filledData.labels[index]
       }));
       
       setHistoricalData(historicalPoints);
-      console.log('✅ Device stats loaded:', filled.length, 'data points');
+      console.log('✅ Device stats loaded:', filledData.values.length, 'data points');
       } else {
-        // Handle error response like site page
+        // Handle error response like dashboard for consistency
         console.error('❌ Failed to fetch device stats:', response.status);
         
-        // Ensure error case also has the correct length
-        const expectedLength = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : periodLabels.length;
-        setChartData(Array(expectedLength).fill(0));
-        
-        // Ensure error case also has the correct labels
-        const expectedLabels = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : periodLabels.length;
-        if (periodLabels.length !== expectedLabels) {
-          // Generate corrected labels for error case
-          const correctedLabels: string[] = [];
-          const startDate = new Date(from);
+        // Use the same fillMissingPeriods logic for error case
+        const fillMissingPeriods = (data: any[], fromDate: string, toDate: string, granularity: string) => {
+          const startDate = new Date(fromDate);
+          const endDate = new Date(toDate);
+          const periods: { [key: string]: number } = {};
+          const labels: string[] = [];
           
-          for (let i = 0; i < expectedLabels; i++) {
-            const currentDate = new Date(startDate);
-            currentDate.setDate(startDate.getDate() + i);
-            correctedLabels.push(currentDate.toLocaleDateString('en-US', { 
-              month: 'short', 
-              day: 'numeric'
-            }));
+          // Initialize all periods with zero
+          let currentDate = new Date(startDate);
+          while (currentDate <= endDate) {
+            let periodKey: string;
+            let label: string;
+            
+            switch (granularity) {
+              case 'day':
+                periodKey = currentDate.toISOString().slice(0, 10);
+                label = currentDate.toLocaleDateString('en-US', { 
+                  month: 'short', 
+                  day: 'numeric' 
+                });
+                currentDate.setDate(currentDate.getDate() + 1);
+                break;
+              default:
+                periodKey = currentDate.toISOString().slice(0, 10);
+                label = currentDate.toLocaleDateString('en-US', { 
+                  month: 'short', 
+                  day: 'numeric' 
+                });
+                currentDate.setDate(currentDate.getDate() + 1);
+            }
+            
+            periods[periodKey] = 0;
+            labels.push(label);
           }
           
-          setChartLabels(correctedLabels);
-        } else {
-          setChartLabels(periodLabels);
-        }
+          return {
+            values: Object.values(periods),
+            labels: labels
+          };
+        };
+        
+        // Apply fillMissingPeriods for error case
+        const errorData = fillMissingPeriods([], from, to, granularity);
+        setChartData(errorData.values);
+        setChartLabels(errorData.labels);
         setDeviceStats(null);
         setHistoricalData([]);
       }
@@ -909,6 +1256,71 @@ export default function DeviceDetailPage() {
     });
     
     return { from, to };
+  };
+
+  // Helper function to set default export dates
+  const setDefaultExportDates = () => {
+    const now = new Date();
+    const from = new Date(now.getTime() - 24 * 60 * 60 * 1000); // 24 hours ago
+    setExportFrom(from);
+    setExportTo(now);
+  };
+
+  // Helper function to apply data sampling based on user-selected interval
+  const applyDataSampling = (data: any[], samplingIntervalMinutes: number) => {
+    if (samplingIntervalMinutes <= 1 || data.length <= 1) {
+      return data; // No sampling needed
+    }
+    
+    const sampledData: any[] = [];
+    const intervalMs = samplingIntervalMinutes * 60 * 1000; // Convert to milliseconds
+    
+    // Always include the first data point
+    sampledData.push(data[0]);
+    
+    for (let i = 1; i < data.length; i++) {
+      const currentTimestamp = new Date(data[i].timestamp).getTime();
+      const lastSampledTimestamp = new Date(sampledData[sampledData.length - 1].timestamp).getTime();
+      
+      // Check if enough time has passed to include this data point
+      if (currentTimestamp - lastSampledTimestamp >= intervalMs) {
+        sampledData.push(data[i]);
+      }
+    }
+    
+    // Always include the last data point if it's not already included
+    if (sampledData.length > 0 && sampledData[sampledData.length - 1] !== data[data.length - 1]) {
+      sampledData.push(data[data.length - 1]);
+    }
+    
+    console.log('🔍 Data sampling applied:', {
+      originalPoints: data.length,
+      sampledPoints: sampledData.length,
+      interval: samplingIntervalMinutes,
+      reduction: ((1 - sampledData.length / data.length) * 100).toFixed(1) + '%'
+    });
+    
+    return sampledData;
+  };
+
+  // Helper function to estimate data size and warn about large exports
+  const estimateExportSize = (from: Date, to: Date, samplingInterval: number = 1) => {
+    const timeDiff = to.getTime() - from.getTime();
+    const hours = timeDiff / (1000 * 60 * 60); // Convert milliseconds to hours
+    
+    // Estimate data points based on sampling interval
+    const estimatedDataPoints = Math.ceil(hours * 60 / samplingInterval); // Data points per hour based on sampling interval
+    
+    // Estimate file size (each row ~100 bytes)
+    const estimatedFileSizeMB = (estimatedDataPoints * 100) / (1024 * 1024);
+    
+    return {
+      dataPoints: estimatedDataPoints,
+      fileSizeMB: estimatedFileSizeMB,
+      hours: hours,
+      isLarge: estimatedDataPoints > 10000 || estimatedFileSizeMB > 10, // Warn if >10k points or >10MB
+      samplingInterval: samplingInterval
+    };
   };
 
   const fetchAdditionalMetrics = async (deviceType: string) => {
@@ -1140,6 +1552,14 @@ export default function DeviceDetailPage() {
     
     if (!siteId || !deviceId) {
       console.log('❌ Missing siteId or deviceId:', { siteId, deviceId });
+      console.log('❌ Params validation failed:', {
+        hasSiteId: !!siteId,
+        hasDeviceId: !!deviceId,
+        siteIdType: typeof siteId,
+        deviceIdType: typeof deviceId,
+        siteIdValue: siteId,
+        deviceIdValue: deviceId
+      });
       return;
     }
     
@@ -1263,6 +1683,11 @@ export default function DeviceDetailPage() {
     }
   }, [waterMetricsPeriod, waterMetricsCustomFrom, waterMetricsCustomTo]);
 
+  // Set default export dates when component mounts
+  useEffect(() => {
+    setDefaultExportDates();
+  }, []);
+
   // Manual real-time data processing event listener
   useEffect(() => {
     const handleManualDeviceData = (event: CustomEvent) => {
@@ -1283,7 +1708,7 @@ export default function DeviceDetailPage() {
             updated.flowRate.data = updated.flowRate.data.slice(-maxRealtimePoints);
             updated.flowRate.timestamps = updated.flowRate.timestamps.slice(-maxRealtimePoints);
           }
-          
+          {/*
           updated.pressure.data = [...updated.pressure.data, data.pressure || 0];
           updated.pressure.timestamps = [...updated.pressure.timestamps, newTimestamp];
           if (updated.pressure.data.length > maxRealtimePoints) {
@@ -1297,7 +1722,7 @@ export default function DeviceDetailPage() {
             updated.temperature.data = updated.temperature.data.slice(-maxRealtimePoints);
             updated.temperature.timestamps = updated.temperature.timestamps.slice(-maxRealtimePoints);
           }
-          
+          */}
           console.log('🔧 Manual real-time data points updated:', {
             flowRate: updated.flowRate.data.length,
             pressure: updated.pressure.data.length,
@@ -1354,12 +1779,12 @@ export default function DeviceDetailPage() {
 
   // WebSocket connection for real-time data
   useEffect(() => {
-    if (!deviceId) {
+    if (!deviceId) {  
       console.warn('❌ No deviceId for WebSocket subscription');
       return;
     }
 
-    console.log('🔌 Initializing WebSocket connection for device:', deviceId);
+    console.log('🔌 Initializing WebSocket connection for device:', deviceId);  
 
     // Initialize WebSocket connection
             const newSocket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:8001', {
@@ -1367,10 +1792,10 @@ export default function DeviceDetailPage() {
     });
 
     newSocket.on('connect', () => {
-      console.log('🔌 WebSocket connected, subscribing to device:', deviceId);
+      console.log('🔌 WebSocket connected, subscribing to device:', deviceId);  
       setIsConnected(true);
       // Subscribe to device-specific data
-      newSocket.emit('subscribe-device', deviceId);
+      newSocket.emit('subscribe-device', deviceId);        
     });
 
     newSocket.on('subscription-confirmed', (data) => {
@@ -1685,9 +2110,9 @@ export default function DeviceDetailPage() {
       <div className="p-8">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p>Loading device details...</p>
-          <p className="text-sm text-gray-500 mt-2">Site ID: {siteId}</p>
-          <p className="text-sm text-gray-500">Device ID: {deviceId}</p>
+          <p>{t('common.loading')} {t('devices.deviceDetails').toLowerCase()}...</p>
+          <p className="text-sm text-gray-500 mt-2">{t('sites.title')} ID: {siteId}</p>
+          <p className="text-sm text-gray-500">{t('devices.deviceId')}: {deviceId}</p>
         </div>
       </div>
     </DashboardLayout>
@@ -1701,15 +2126,15 @@ export default function DeviceDetailPage() {
     }}>
       <div className="p-8">
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <h3 className="text-lg font-medium text-red-800 mb-2">Error Loading Device</h3>
+          <h3 className="text-lg font-medium text-red-800 mb-2">{t('common.error')} {t('common.loading')} {t('devices.title').toLowerCase()}</h3>
           <p className="text-red-600">{error}</p>
-          <p className="text-sm text-gray-500 mt-2">Site ID: {siteId}</p>
-          <p className="text-sm text-gray-500">Device ID: {deviceId}</p>
+          <p className="text-sm text-gray-500 mt-2">{t('sites.title')} ID: {siteId}</p>
+          <p className="text-sm text-gray-500">{t('devices.deviceId')}: {deviceId}</p>
           <button
             onClick={() => window.location.reload()}
             className="mt-3 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700"
           >
-            Retry
+            {t('common.retry')}
           </button>
         </div>
       </div>
@@ -1725,18 +2150,18 @@ export default function DeviceDetailPage() {
         role: session?.user?.role || '',
       }}>
         <div className="p-8">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-            <h3 className="text-lg font-medium text-yellow-800 mb-2">Device Not Found</h3>
-            <p className="text-yellow-600">The requested device could not be loaded.</p>
-            <p className="text-sm text-gray-500 mt-2">Site ID: {siteId}</p>
-            <p className="text-sm text-gray-500">Device ID: {deviceId}</p>
-            <button
-              onClick={() => router.push(`/dashboard/sites/${siteId}`)}
-              className="mt-3 bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700"
-            >
-              Back to Site
-            </button>
-          </div>
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <h3 className="text-lg font-medium text-yellow-800 mb-2">{t('devices.title')} {t('common.notFound')}</h3>
+          <p className="text-yellow-600">{t('devices.deviceNotFound')}</p>
+          <p className="text-sm text-gray-500 mt-2">{t('sites.title')} {t('common.name')}: {siteId}</p>
+          <p className="text-sm text-gray-500">{t('devices.title')} {t('common.name')}: {deviceId}</p>  
+          <button
+            onClick={() => router.push(`/dashboard/sites/${siteId}`)}   
+            className="mt-3 bg-yellow-600 text-white px-4 py-2 rounded hover:bg-yellow-700"
+          >
+            {t('common.back')} {t('common.to')} {t('sites.title')}
+          </button>
+        </div>
         </div>
       </DashboardLayout>
     );
@@ -1750,46 +2175,38 @@ export default function DeviceDetailPage() {
 
   return (
     <DashboardLayout user={user}>
-      <div className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
+      <div className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6 bg-gray-50 dark:bg-gray-900">
         {/* Header */}
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
           <div className="flex gap-3 mb-4">
 
             <button
               onClick={() => router.push(`/dashboard/sites/${siteId}`)}
               className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"
             >
-              Back to Site
+              {t('common.back')} {t('sites.title')}
             </button>
-
-            {/* Water Device Specific Alert Configuration Button */}
-            <button
-              onClick={() => router.push(`/dashboard/sites/${siteId}/devices/${deviceId}/water/alerts`)}
-              className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2"
-            >
-              <BellIcon className="w-4 h-4" />
-              Configure Alerts
-            </button>
-
-            <button
-              onClick={() => setConfigMode(!configMode)}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-            >
-              <CogIcon className="w-4 h-4" />
-              {configMode ? 'Cancel' : 'Configure'}
-            </button>
+             {/* Water Device Specific Alert Configuration Button */}
+            {(user.role === 'superadmin' || user.role === 'admin' ) && (
+              <button
+                onClick={() => router.push(`/dashboard/sites/${siteId}/devices/${deviceId}/water/alerts`)}
+                className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2"
+              >
+                <BellIcon className="w-4 h-4" />
+                {t('devices.deviceAlerts')}
+              </button>
+            )}
                                   {/* Historical Data Export Button for Water Devices */}
           {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && device?.type === 'water' && (
               <div className="flex items-center justify-end">
-
-                <button
-                  onClick={exportHistoricalData}
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
-                  title="Export historical data to CSV"
-                >
-                  <ArrowDownTrayIcon className="w-3 h-3" />
-                  Export Historical Data
-                </button>
+                                  <button
+                    onClick={handleExportClick}
+                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
+                    title={t('analytics.exportData')}
+                  >
+                    <ArrowDownTrayIcon className="w-3 h-3" />
+                    {t('analytics.exportData')}
+                  </button>
               </div>
           )}
           </div>
@@ -1798,22 +2215,22 @@ export default function DeviceDetailPage() {
             <div className="flex items-center gap-3">
               {getTypeIcon(device.type)}
               <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{device.name}</h1>
-                <p className="text-gray-600">Site: {site?.name}</p>
+                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">{device.name}</h1>
+                <p className="text-gray-600 dark:text-gray-400">{t('sites.title')}: {site?.name}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               {getStatusIcon(device.status)}
               <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-                device.status === 'active' ? 'bg-green-100 text-green-800' :
-                device.status === 'maintenance' ? 'bg-yellow-100 text-yellow-800' :
-                'bg-red-100 text-red-800'
+                device.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200' :
+                device.status === 'maintenance' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200' :
+                'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200'
               }`}>
                 {device.status}
               </span>
             </div>
           </div>
-          
+           {/*
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
             <div>
               <span className="text-gray-500">Device ID:</span>
@@ -1830,11 +2247,11 @@ export default function DeviceDetailPage() {
               </span>
             </div>
           </div>
-          
+          */}
 
 
 
-        {/* Device Info Summary */}
+          {/* Device Info Summary 
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Device Information</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
@@ -1862,128 +2279,113 @@ export default function DeviceDetailPage() {
               <p className="text-lg font-semibold text-gray-900">{new Date(device.updatedAt).toLocaleDateString()}</p>
             </div>
           </div>
-    
+          */}
         </div>
 
 
 
         {/* Real-time Data Display */}
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">Real-time Data</h2>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('devices.deviceHistory')}</h2>
             <div className="flex items-center gap-2">
               <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-              <span className={`text-sm ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
-                {isConnected ? 'Connected' : 'Disconnected'}
-              </span>
+                              <span className={`text-sm ${isConnected ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                  {isConnected ? t('dashboard.online') : t('dashboard.offline')}
+                </span>
             </div>
           </div>
           
           {realtimeData ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Main Value */}
-              <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-4">
+              <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-900/10 rounded-lg p-4">
                 <div className="flex items-center gap-3 mb-2">
                   {getTypeIcon(device?.type || 'unknown', 'w-6 h-6')}
-                  <h4 className="font-semibold text-gray-900 text-sm">
-                    {device?.type === 'water' ? 'Consumption' : 
-                     device?.type === 'energy' ? 'Energy' :
-                     device?.type === 'gas' ? 'Gas Usage' :
-                     device?.type === 'solar' ? 'Production' : 'Value'}
+                  <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+                    {t('parameters.consumption')} {t('devices.water')}
                   </h4>
                 </div>
-                <div className="text-2xl font-bold text-blue-600">
+                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                   {formatValue(device?.type || 'unknown', realtimeData.value || realtimeData.consumption)}
                 </div>
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-gray-500 dark:text-gray-400">
                   {new Date(realtimeData.timestamp).toLocaleTimeString()}
                 </div>
               </div>
 
               {/* Flow Rate */}
               {realtimeData.flowRate !== null && realtimeData.flowRate !== undefined && (
-                <div className="bg-gradient-to-r from-cyan-50 to-cyan-100 rounded-lg p-4">
+                <div className="bg-gradient-to-r from-cyan-50 to-cyan-100 dark:from-cyan-900/20 dark:to-cyan-900/10 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center">
                       <span className="text-white text-xs font-bold">↔</span>
                     </div>
-                    <h4 className="font-semibold text-gray-900 text-sm">Flow Rate</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{t('parameters.flow')}</h4>
                   </div>
-                  <div className="text-2xl font-bold text-cyan-600">
+                  <div className="text-2xl font-bold text-cyan-600 dark:text-cyan-400">
                     {(realtimeData.flowRate || 0).toFixed(2)}
                   </div>
-                  <div className="text-xs text-gray-500">L/min</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">L/s</div>
                 </div>
               )}
 
               {/* Pressure */}
               {realtimeData.pressure !== null && realtimeData.pressure !== undefined && (
-                <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-4">
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/10 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
                       <span className="text-white text-xs font-bold">P</span>
                     </div>
-                    <h4 className="font-semibold text-gray-900 text-sm">Pressure</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{t('parameters.pressure')}</h4>
                   </div>
-                  <div className="text-2xl font-bold text-purple-600">
+                  <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
                     {(realtimeData.pressure || 0).toFixed(2)}
                   </div>
-                  <div className="text-xs text-gray-500">bar</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">bar</div>
                 </div>
               )}
 
               {/* Temperature */}
               {realtimeData.temperature !== null && realtimeData.temperature !== undefined && (
-                <div className="bg-gradient-to-r from-red-50 to-red-100 rounded-lg p-4">
+                <div className="bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-900/10 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
                       <span className="text-white text-xs font-bold">°C</span>
                     </div>
-                    <h4 className="font-semibold text-gray-900 text-sm">Temperature</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{t('parameters.temperature')}</h4>
                   </div>
-                  <div className="text-2xl font-bold text-red-600">
+                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                     {(realtimeData.temperature || 0).toFixed(1)}
                   </div>
-                  <div className="text-xs text-gray-500">°C</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">°C</div>
                 </div>
               )}
 
-              {/* Power (for energy/solar devices) */}
-              {realtimeData.power !== null && realtimeData.power !== undefined && (
-                <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg p-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <BoltIcon className="w-6 h-6 text-yellow-500" />
-                    <h4 className="font-semibold text-gray-900 text-sm">Power</h4>
-                  </div>
-                  <div className="text-2xl font-bold text-yellow-600">
-                    {(realtimeData.power || 0).toFixed(2)}
-                  </div>
-                  <div className="text-xs text-gray-500">kW</div>
-                </div>
-              )}
+              {/* Power section hidden for water devices */}
 
               {/* Humidity */}
               {realtimeData.humidity !== null && realtimeData.humidity !== undefined && (
-                <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-4">
+                <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 rounded-lg p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
                       <span className="text-white text-xs font-bold">%</span>
                     </div>
-                    <h4 className="font-semibold text-gray-900 text-sm">Humidity</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{t('parameters.humidity')}</h4>
                   </div>
-                  <div className="text-2xl font-bold text-green-600">
+                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                     {realtimeData.humidity.toFixed(0)}
                   </div>
-                  <div className="text-xs text-gray-500">%</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">%</div>
                 </div>
               )}
             </div>
           ) : (
-            <div className="text-center py-8 text-gray-500">
-              <SignalIcon className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-              <p>Waiting for real-time data...</p>
-              <p className="text-sm">
-                {isConnected ? 'Connected - waiting for device data' : 'Connecting to real-time feed...'}
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              <SignalIcon className="w-16 h-16 mx-auto mb-4 text-gray-300 dark:text-gray-500" />
+              <p className="dark:text-gray-300">{t('common.loading')}</p>
+              <p className="text-sm dark:text-gray-400">
+                {isConnected ? t('dashboard.online') + ' - ' + t('common.loading') : t('common.loading')}
               </p>
             </div>
           )}
@@ -1992,78 +2394,78 @@ export default function DeviceDetailPage() {
 
         {/* Configuration Mode */}
         {configMode && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Device Configuration</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{t('devices.deviceDetails')}</h2>
             <form onSubmit={handleConfigSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Device Name</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('devices.deviceName')}</label>
                   <input
                     type="text"
                     value={configData.name || ''}
                     onChange={(e) => setConfigData({...configData, name: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     required
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.status')}</label>
                   <select
                     value={configData.status || 'active'}
                     onChange={(e) => setConfigData({...configData, status: e.target.value as 'active' | 'inactive' | 'maintenance'})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                    <option value="maintenance">Maintenance</option>
+                    <option value="active">{t('dashboard.online')}</option>
+                    <option value="inactive">{t('dashboard.offline')}</option>
+                    <option value="maintenance">{t('dashboard.maintenance')}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Threshold</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.threshold')}</label>
                   <input
                     type="number"
                     step="0.1"
                     value={configData.threshold || 0}
                     onChange={(e) => setConfigData({...configData, threshold: parseFloat(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Reading Interval (minutes)</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.readingInterval')} ({t('time.minutes')})</label>
                   <input
                     type="number"
                     value={configData.readingInterval || 5}
                     onChange={(e) => setConfigData({...configData, readingInterval: parseInt(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.description')}</label>
                 <textarea
                   rows={3}
                   value={configData.description || ''}
                   onChange={(e) => setConfigData({...configData, description: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Device description..."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  placeholder={t('devices.deviceDetails') + '...'}
                 />
               </div>
               <div className="flex justify-between">
                 <button
                   type="submit"
-                  className="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  className="bg-blue-600 dark:bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium"
                   disabled={loading}
                 >
-                  {loading ? 'Saving...' : 'Save Changes'}
+                  {loading ? t('common.loading') : t('profile.saveChanges')}
                 </button>
                 <button
                   type="button"
                   onClick={handleDeleteDevice}
-                  className="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors font-medium flex items-center gap-2 ml-auto"
+                  className="bg-red-600 dark:bg-red-500 text-white px-6 py-3 rounded-lg hover:bg-red-700 dark:hover:bg-red-600 transition-colors font-medium flex items-center gap-2 ml-auto"
                   disabled={loading}
                 >
                   <ExclamationTriangleIcon className="w-4 h-4" />
-                  Delete Device
+                  {t('devices.deleteDevice')}
                 </button>
               </div>
             </form>
@@ -2080,81 +2482,20 @@ export default function DeviceDetailPage() {
 
 
 
-        {device.type === 'energy' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white rounded-lg shadow p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <BoltIcon className="w-8 h-8 text-blue-500" />
-                <h3 className="text-lg font-semibold">Energy Monitor</h3>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total Consumption:</span>
-                  <span className="font-medium">{device.lastReading ? formatValue('energy', device.lastReading.value) : 'N/A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Current Power:</span>
-                  <span className="font-medium">{device.lastReading?.power ? `${device.lastReading.power} kW` : 'N/A'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {device.type === 'gas' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white rounded-lg shadow p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <FireIcon className="w-8 h-8 text-red-500" />
-                <h3 className="text-lg font-semibold">Gas Monitor</h3>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total Consumption:</span>
-                  <span className="font-medium">{device.lastReading ? formatValue('gas', device.lastReading.value) : 'N/A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Flow Rate:</span>
-                  <span className="font-medium">{device.lastReading?.flowRate ? `${device.lastReading.flowRate} m³/h` : 'N/A'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {device.type === 'solar' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="bg-white rounded-lg shadow p-4">
-              <div className="flex items-center gap-3 mb-3">
-                <SunIcon className="w-8 h-8 text-yellow-500" />
-                <h3 className="text-lg font-semibold">Solar Monitor</h3>
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Total Production:</span>
-                  <span className="font-medium">{device.lastReading ? formatValue('solar', device.lastReading.value) : 'N/A'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Current Output:</span>
-                  <span className="font-medium">{device.lastReading?.power ? `${device.lastReading.power} kW` : 'N/A'}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Energy, Gas, and Solar monitors hidden for water devices */}
 
 
         {/* Enhanced Water Metrics Chart - Only for Water Devices */}
         {device?.type === 'water' && (
-          <div className="bg-white rounded-xl shadow-lg border border-gray-100 p-6">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md">
                   <span className="text-white text-lg">🌊</span>
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900">Historical Data</h3>
-                  <p className="text-sm text-gray-500">Real-time monitoring of water system parameters</p>
+                  <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">{t('devices.deviceHistory')}</h3>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">{t('devices.deviceParameters')}</p>
                 </div>
                 
                 {/* Enhanced Real-time indicator with timestamp */}
@@ -2162,10 +2503,10 @@ export default function DeviceDetailPage() {
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2 bg-green-50 px-3 py-1 rounded-full border border-green-200">
                       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                      <span className="text-xs text-green-700 font-semibold">LIVE</span>
+                      <span className="text-xs text-green-700 font-semibold">{t('common.live')}</span>
                     </div>
                     <div className="text-xs text-gray-500">
-                      Last update: {lastRealtimeUpdate.toLocaleTimeString()}
+                      {t('common.lastUpdate')}: {lastRealtimeUpdate.toLocaleTimeString()}
                     </div>
                   </div>
                 )}
@@ -2174,15 +2515,15 @@ export default function DeviceDetailPage() {
               {/* Enhanced Metric Selector with current values */}
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-gray-700">Select Metric:</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.select')} {t('common.metric')}:</span>
                   <select
                     value={selectedMetric}
                     onChange={(e) => setSelectedMetric(e.target.value as 'flowRate' | 'pressure' | 'temperature')}
-                    className="px-4 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white shadow-sm"
+                    className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm font-medium"
                   >
-                    <option value="flowRate">Flow Rate (L/min)</option>
-                    <option value="pressure">Pressure (bar)</option>
-                    <option value="temperature">Temperature (°C)</option>
+                    <option value="flowRate">{t('parameters.flow')} ({t('units.liters')}/s)</option>
+                    <option value="pressure">{t('parameters.pressure')} ({t('units.bar')})</option>
+                    <option value="temperature">{t('parameters.temperature')} ({t('units.celsius')})</option>
                   </select>
                 </div>
                 
@@ -2218,10 +2559,10 @@ export default function DeviceDetailPage() {
                     if (currentValue !== null && currentValue !== undefined) {
                       const getMetricUnit = (metric: string) => {
                         switch(metric) {
-                          case 'flowRate': return 'L/min';
+                          case 'flowRate': return 'L/s';
                           case 'pressure': return 'bar';
                           case 'temperature': return '°C';
-                          default: return 'L/min';
+                          default: return 'L/s';
                         }
                       };
                       
@@ -2233,26 +2574,26 @@ export default function DeviceDetailPage() {
             </div>
             
             {/* Time Range Selection for Water Metrics */}
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
               <div className="flex flex-wrap items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
-                  <CalendarIcon className="w-5 h-5 text-gray-500" />
-                  <span className="text-sm font-medium text-gray-700">Real-time Mode</span>
+                  <CalendarIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Real-time Mode</span>
                 </div>
                 
                 {/* Connection Status */}
                 <div className="flex items-center gap-2">
                   <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  <span className={`text-xs ${isConnected ? 'text-green-600' : 'text-red-600'}`}>
+                  <span className={`text-xs ${isConnected ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                     {isConnected ? 'Connected' : 'Disconnected'}
                   </span>
                   {isConnected && (
-                    <span className="text-xs text-blue-600">
-                      • {deviceId}
+                    <span className="text-xs text-blue-600 dark:text-blue-400">
+                      • {deviceId}      
                     </span>
                   )}
                   {lastRealtimeUpdate && (
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
                       • Last: {lastRealtimeUpdate.toLocaleTimeString()}
                     </span>
                   )}
@@ -2260,7 +2601,7 @@ export default function DeviceDetailPage() {
                 
                 {/* Time Range Selection */}
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-gray-700">Time Range:</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Time Range:</span>
                 </div>
                     
                 <div className="flex flex-wrap items-center gap-2">
@@ -2271,10 +2612,10 @@ export default function DeviceDetailPage() {
                         setWaterMetricsPeriod(period.value);
                         setShowWaterMetricsCustomPicker(period.value === 'custom');
                       }}
-                      className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                      className={`px-3 py-1 text-sm rounded-md transition-colors font-medium ${
                         waterMetricsPeriod === period.value
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                          ? 'bg-blue-500 dark:bg-blue-600 text-white shadow-md'
+                          : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 shadow-sm'
                       }`}
                     >
                       {period.label}
@@ -2296,7 +2637,7 @@ export default function DeviceDetailPage() {
                           } 
                         }}
                       />
-                      <span className="text-gray-500">to</span>
+                      <span className="text-gray-500 dark:text-gray-400">to</span>
                       <DateTimePicker
                         label="To"
                         value={waterMetricsCustomTo}
@@ -2318,15 +2659,15 @@ export default function DeviceDetailPage() {
                       console.log('🌊 Refreshing water metrics data...');
                       fetchAdditionalMetrics(device.type);
                     }}
-                    className="px-3 py-1 text-sm bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors"
+                    className="px-3 py-1 text-sm bg-blue-600 dark:bg-blue-500 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium shadow-sm"
                   >
                     Refresh
                   </button>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-600">
                     {(() => {
                       const { from, to } = getWaterMetricsDateRange();
-                      const fromDate = new Date(from).toLocaleString();
-                      const toDate = new Date(to).toLocaleString();
+                      const fromDate = new Date(from).toLocaleDateString();
+                      const toDate = new Date(to).toLocaleDateString();
                       return `${fromDate} - ${toDate}`;
                     })()}
                   </div>
@@ -2429,10 +2770,10 @@ export default function DeviceDetailPage() {
                 
                 const getMetricUnit = (metric: string) => {
                   switch(metric) {
-                    case 'flowRate': return 'L/min';
+                    case 'flowRate': return 'L/s';
                     case 'pressure': return 'bar';
                     case 'temperature': return '°C';
-                    default: return 'L/min';
+                    default: return 'L/s';
                   }
                 };
                 
@@ -2549,34 +2890,34 @@ export default function DeviceDetailPage() {
                 );
               } else {
                 return (
-                  <div className="text-center py-12 text-gray-500">
-                    <div className="w-16 h-16 bg-gray-200 rounded-full mx-auto mb-4 flex items-center justify-center">
-                      <span className="text-gray-400 text-2xl">🌊</span>
+                  <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+                    <div className="w-16 h-16 bg-gray-200 dark:bg-gray-600 rounded-full mx-auto mb-4 flex items-center justify-center">
+                      <span className="text-gray-400 dark:text-gray-500 text-2xl">🌊</span>
                     </div>
-                    <p className="text-lg font-medium mb-2">No {selectedMetric} data available</p>
-                    <p className="text-sm text-gray-400">Try selecting a different metric or check if data is being collected</p>
+                    <p className="text-lg font-medium mb-2 dark:text-gray-300">No {selectedMetric} data available</p>
+                    <p className="text-sm text-gray-400 dark:text-gray-500">Try selecting a different metric or check if data is being collected</p>
                   </div>
                 );
               }
             })()}
             
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
+            <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-6">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700">Unit:</span>
-                    <span className="text-sm text-gray-900 font-semibold">{(() => {
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Unit:</span>
+                    <span className="text-sm text-gray-900 dark:text-gray-100 font-semibold">{(() => {
                       switch(selectedMetric) {
-                        case 'flowRate': return 'L/min';
+                        case 'flowRate': return 'L/s';
                         case 'pressure': return 'bar';
                         case 'temperature': return '°C';
-                        default: return 'L/min';
+                        default: return 'L/s';
                       }
                     })()}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700">Data Points:</span>
-                    <span className="text-sm text-gray-900 font-semibold">{(() => {
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Data Points:</span>
+                    <span className="text-sm text-gray-900 dark:text-gray-100 font-semibold">{(() => {
                       const realtimeData = realtimeDataPoints[selectedMetric];
                       const historicalData = combinedChartData[selectedMetric];
                       const currentData = (realtimeData && realtimeData.data.length > 0) ? realtimeData : historicalData;
@@ -2589,34 +2930,34 @@ export default function DeviceDetailPage() {
                   })() && (
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                      <span className="text-sm text-green-700 font-semibold">Real-time</span>
+                      <span className="text-sm text-green-700 dark:text-green-400 font-semibold">Real-time</span>
                     </div>
                   )}
                   
                   {/* Enhanced Connection Status */}
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700">Connection:</span>
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Connection:</span>
                     {isConnected ? (
                       <div className="flex items-center gap-1">
                         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-sm text-green-700 font-semibold">Connected</span>
+                        <span className="text-sm text-green-700 dark:text-green-400 font-semibold">Connected</span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-1">
                         <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                        <span className="text-sm text-red-700 font-semibold">Disconnected</span>
+                        <span className="text-sm text-red-700 dark:text-red-400 font-semibold">Disconnected</span>
                       </div>
                     )}
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="flex flex-col items-end gap-1">
-                    <span className="text-sm text-gray-600">{(() => {
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{(() => {
                       const realtimeData = realtimeDataPoints[selectedMetric];
                       return realtimeData && realtimeData.data.length > 0 ? 'Historical + Real-time data' : 'Historical data (waiting for real-time)';
                     })()}</span>
                     {lastRealtimeUpdate && (
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
                         Updated: {lastRealtimeUpdate.toLocaleTimeString()}
                       </span>
                     )}
@@ -2628,15 +2969,15 @@ export default function DeviceDetailPage() {
         )}
 
         {/* Device Consumption Charts - Moved below Water Metrics */}
-        <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
           {/* Time Period Selector */}
           <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4 mb-4">
             <div className="flex items-center gap-2">
-              <CalendarIcon className="w-5 h-5 text-gray-500" />
-              <span className="text-sm font-medium text-gray-700">Time Period:</span>
+              <CalendarIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Time Period:</span>
             </div>
             {/* Debug info */}
-            <div className="text-xs text-gray-500">
+            <div className="text-xs text-gray-500 dark:text-gray-400">
               {(() => {
                 const { from, to } = getDateRange();
                 const fromDate = new Date(from).toLocaleDateString();
@@ -2655,10 +2996,10 @@ export default function DeviceDetailPage() {
                       setSelectedPeriod(period.value);
                       setShowCustomPicker(period.value === 'custom');
                     }}
-                    className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                    className={`px-3 py-1 text-sm rounded-md transition-colors font-medium ${
                       selectedPeriod === period.value
-                        ? 'bg-blue-500 text-white'
-                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                        ? 'bg-blue-500 dark:bg-blue-600 text-white shadow-md'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 shadow-sm'
                     }`}
                   >
                     {period.label}
@@ -2675,7 +3016,7 @@ export default function DeviceDetailPage() {
                   onChange={setCustomFrom}
                   slotProps={{ textField: { size: 'small' } }}
                 />
-                <span className="text-gray-500">to</span>
+                <span className="text-gray-500 dark:text-gray-400">to</span>
                 <DateTimePicker
                   label="To"
                   value={customTo}
@@ -2688,13 +3029,13 @@ export default function DeviceDetailPage() {
 
           {/* Chart Display */}
           <div className="mb-4 flex justify-between items-center">
-            <h3 className="text-lg font-semibold text-gray-900">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               Daily Consumption Chart ({chartLabels.length} days)
             </h3>
             {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && chartData && chartData.length > 0 && (
               <button
                 onClick={exportChartData}
-                className="px-3 py-1 text-sm rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center gap-1"
+                className="px-3 py-1 text-sm rounded-md bg-green-600 dark:bg-green-500 text-white hover:bg-green-700 dark:hover:bg-green-600 transition-colors flex items-center gap-1"
                 title="Export chart data to CSV"
               >
                 <ArrowDownTrayIcon className="w-4 h-4" />
@@ -2723,14 +3064,8 @@ export default function DeviceDetailPage() {
               }]}
               series={[{ 
                 data: chartData, 
-                label: device?.type === 'energy' ? 'Energy' :
-                       device?.type === 'solar' ? 'Solar' :
-                       device?.type === 'water' ? 'Water' :
-                       device?.type === 'gas' ? 'Gas' : 'Consumption',
-                color: device?.type === 'energy' ? '#3B82F6' :
-                       device?.type === 'solar' ? '#22C55E' :
-                       device?.type === 'water' ? '#9333EA' :
-                       device?.type === 'gas' ? '#EF4444' : '#6366F1',
+                label: 'Water Consumption',
+                color: '#9333EA',
                 curve: 'linear',
                 area: true
               }]}
@@ -2760,14 +3095,8 @@ export default function DeviceDetailPage() {
               }]}
               series={[{ 
                 data: chartData, 
-                label: device?.type === 'energy' ? 'Energy' :
-                       device?.type === 'solar' ? 'Solar' :
-                       device?.type === 'water' ? 'Water' :
-                       device?.type === 'gas' ? 'Gas' : 'Consumption',
-                color: device?.type === 'energy' ? '#3B82F6' :
-                       device?.type === 'solar' ? '#22C55E' :
-                       device?.type === 'water' ? '#9333EA' :
-                       device?.type === 'gas' ? '#EF4444' : '#6366F1'
+                label: 'Water Consumption',
+                color: '#9333EA'
               }]}
               height={350}
             />
@@ -2777,65 +3106,270 @@ export default function DeviceDetailPage() {
           
           {/* Device Statistics with Consumption Analysis */}
           {deviceStats && deviceStats.data.length > 0 && (
-            <div className="mt-6 pt-6 border-t border-gray-200">
+            <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                   Device Statistics ({getGranularity() === 'hour' ? 'Hourly' : getGranularity() === 'day' ? 'Daily' : getGranularity() === 'week' ? 'Weekly' : 'Monthly'} Data)
                 </h3>
-                <div className="text-sm text-gray-500">
+                <div className="text-sm text-gray-500 dark:text-gray-400">
                   {deviceStats.data.length} data points
                 </div>
               </div>
               
               {/* Summary Statistics */}
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-gradient-to-r from-green-50 to-green-100 rounded-lg shadow-sm p-4">
+                <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 rounded-lg shadow-sm p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <ArrowTrendingUpIcon className="w-6 h-6 text-green-500" />
-                    <h4 className="font-semibold text-gray-900 text-sm">Total Consumption</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Total Consumption</h4>
                   </div>
-                  <div className="text-xl font-bold text-green-600">
+                  <div className="text-xl font-bold text-green-600 dark:text-green-400">
                     {formatValue(device.type, deviceStats.data.reduce((sum, d: DeviceStatsDataPoint) => sum + (d.totalIndex || 0), 0))}
                   </div>
-                  <div className="text-xs text-gray-500">Selected period</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Selected period</div>
                 </div>
                 
-                <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg shadow-sm p-4">
+                <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-900/10 rounded-lg shadow-sm p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <ChartBarIcon className="w-6 h-6 text-blue-500" />
-                    <h4 className="font-semibold text-gray-900 text-sm">Average per {getGranularity()}</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Average per {getGranularity()}</h4>
                   </div>
-                  <div className="text-xl font-bold text-blue-600">
+                  <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
                     {formatValue(device.type, deviceStats.data.length > 0 ? deviceStats.data.reduce((sum, d: DeviceStatsDataPoint) => sum + (d.totalIndex || 0), 0) / deviceStats.data.length : 0)}
                   </div>
-                  <div className="text-xs text-gray-500">Average consumption</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Average consumption</div>
                 </div>
                 
-                <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg shadow-sm p-4">
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/10 rounded-lg shadow-sm p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <ArrowTrendingUpIcon className="w-6 h-6 text-purple-500" />
-                    <h4 className="font-semibold text-gray-900 text-sm">Peak Consumption</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Peak Consumption</h4>
                   </div>
-                  <div className="text-xl font-bold text-purple-600">
+                  <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
                     {formatValue(device.type, deviceStats.data.length > 0 ? Math.max(...deviceStats.data.map((d: DeviceStatsDataPoint) => d.totalIndex || 0)) : 0)}
                   </div>
-                  <div className="text-xs text-gray-500">Highest {getGranularity()}ly usage</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Highest {getGranularity()}ly usage</div>
                 </div>
                 
-                <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 rounded-lg shadow-sm p-4">
+                <div className="bg-gradient-to-r from-yellow-50 to-yellow-100 dark:from-yellow-900/20 dark:to-yellow-900/10 rounded-lg shadow-sm p-4">
                   <div className="flex items-center gap-3 mb-2">
                     <ClockIcon className="w-6 h-6 text-yellow-500" />
-                    <h4 className="font-semibold text-gray-900 text-sm">Data Points</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Data Points</h4>
                   </div>
-                  <div className="text-xl font-bold text-yellow-600">
+                  <div className="text-xl font-bold text-yellow-600 dark:text-yellow-400">
                     {deviceStats.data.length}
                   </div>
-                  <div className="text-xs text-gray-500">Data periods</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400">Data periods</div>
                 </div>
               </div>
             </div>
           )}
         </div>
+        
+        {/* Export Modal */}
+        {showExportModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md mx-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{t('analytics.exportData')} {t('devices.deviceHistory')}</h3>
+                <button
+                  onClick={() => setShowExportModal(false)}
+                  className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              <div className="space-y-4">
+                              <div className="text-sm text-gray-600 dark:text-gray-400">
+                {t('analytics.selectTimeRange')} {t('analytics.exportData')}. {t('analytics.exportWillInclude')} {t('parameters.flow')}, {t('parameters.pressure')}, {t('parameters.temperature')}, {t('common.and')} {t('parameters.consumption')} {t('analytics.data')}.
+              </div>
+                
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.from')} {t('common.date')} {t('common.and')} {t('common.time')}</label>
+                    <LocalizationProvider dateAdapter={AdapterDateFns}>
+                      <DateTimePicker
+                        value={exportFrom}
+                        onChange={setExportFrom}
+                        slotProps={{ 
+                          textField: { 
+                            size: 'small',
+                            className: 'w-full'
+                          } 
+                        }}
+                      />
+                    </LocalizationProvider>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.to')} {t('common.date')} {t('common.and')} {t('common.time')}</label>
+                    <LocalizationProvider dateAdapter={AdapterDateFns}>
+                      <DateTimePicker
+                        value={exportTo}
+                        onChange={setExportTo}
+                        slotProps={{ 
+                          textField: { 
+                            size: 'small',
+                            className: 'w-full'
+                          } 
+                        }}
+                      />
+                    </LocalizationProvider>
+                  </div>
+                  
+                  {/* Data Sampling Interval Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      {t('analytics.dataSamplingInterval')} ({t('time.minutes')})
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={exportSamplingInterval}
+                        onChange={(e) => setExportSamplingInterval(parseInt(e.target.value))}
+                        className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm"
+                      >
+                        <option value={1}>Every 1 minute (Full resolution)</option>
+                        <option value={2}>Every 2 minutes</option>
+                        <option value={5}>Every 5 minutes</option>
+                        <option value={10}>Every 10 minutes</option>
+                        <option value={15}>Every 15 minutes</option>
+                        <option value={30}>Every 30 minutes</option>
+                        <option value={60}>Every hour</option>
+                      </select>
+                      <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-600">
+                        {(() => {
+                          if (!exportFrom || !exportTo) return 'Select dates first';
+                          const sizeEstimate = estimateExportSize(exportFrom, exportTo, exportSamplingInterval);
+                          return `${sizeEstimate.dataPoints.toLocaleString()} points`;
+                        })()}
+                      </div>
+                    </div>
+                                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {t('analytics.samplingIntervalDescription')}
+                      </p>
+                      
+                      {/* Real-time sampling preview */}
+                      {exportFrom && exportTo && (
+                        <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-700">
+                          <div className="text-xs text-blue-800 dark:text-blue-200">
+                            <div className="flex justify-between items-center">
+                              <span>Sampling Preview:</span>
+                              <span className="font-medium">
+                                {(() => {
+                                  const sizeEstimate = estimateExportSize(exportFrom, exportTo, exportSamplingInterval);
+                                  const fullResolutionPoints = Math.ceil(sizeEstimate.hours * 60);
+                                  const reduction = ((1 - sizeEstimate.dataPoints / fullResolutionPoints) * 100).toFixed(1);
+                                  return `${reduction}% smaller`;
+                                })()}
+                              </span>
+                            </div>
+                            <div className="text-xs text-blue-600 dark:text-blue-300 mt-1">
+                              {(() => {
+                                const sizeEstimate = estimateExportSize(exportFrom, exportTo, exportSamplingInterval);
+                                return `From ~${Math.ceil(sizeEstimate.hours * 60).toLocaleString()} to ${sizeEstimate.dataPoints.toLocaleString()} data points`;
+                              })()}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                  </div>
+                </div>
+                
+                {/* Export Size Warning */}
+                {exportFrom && exportTo && (() => {
+                  const sizeEstimate = estimateExportSize(exportFrom, exportTo, exportSamplingInterval);
+                  return (
+                    <div className={`p-3 rounded-lg border ${
+                      sizeEstimate.isLarge 
+                        ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200' 
+                        : 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-700 text-green-800 dark:text-green-200'
+                    }`}>
+                      <div className="text-sm font-medium">
+                        {sizeEstimate.isLarge ? '⚠️ Large Export' : '✅ Export Size OK'}
+                      </div>
+                      <div className="text-xs mt-1">
+                        Estimated: {sizeEstimate.dataPoints.toLocaleString()} data points • {sizeEstimate.fileSizeMB.toFixed(1)} MB • {sizeEstimate.hours.toFixed(1)} hours
+                      </div>
+                      <div className="text-xs mt-1 text-blue-600 dark:text-blue-400">
+                        Sampling: Every {exportSamplingInterval} minute(s) • Data reduction: {(() => {
+                          const fullResolutionPoints = Math.ceil(sizeEstimate.hours * 60);
+                          const reduction = ((1 - sizeEstimate.dataPoints / fullResolutionPoints) * 100).toFixed(1);
+                          return `${reduction}%`;
+                        })()}
+                      </div>
+                    </div>
+                  );
+                })()}
+                
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={setDefaultExportDates}
+                    className="px-3 py-2 text-sm bg-gray-500 text-white rounded hover:bg-gray-600 transition-colors"
+                    title={t('analytics.resetTo24h')}
+                  >
+                    {t('analytics.resetTo24h')}
+                  </button>
+                  
+                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                    {exportFrom && exportTo ? (
+                      <span>
+                        {t('common.range')}: {exportFrom.toLocaleDateString()} {exportFrom.toLocaleTimeString()} - {exportTo.toLocaleDateString()} {exportTo.toLocaleTimeString()}
+                      </span>
+                    ) : (
+                      <span>{t('analytics.pleaseSelectBothDates')}</span>
+                    )}
+                  </div>
+                </div>
+                
+                {/* Export Progress */}
+                {isExporting && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600 dark:text-gray-400">{exportStatus}</span>
+                      <span className="text-gray-600 dark:text-gray-400">{exportProgress.toFixed(0)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                      <div 
+                        className="bg-green-600 h-2 rounded-full transition-all duration-300" 
+                        style={{ width: `${exportProgress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              <div className="flex justify-end gap-3 mt-6">
+                <button
+                  onClick={() => setShowExportModal(false)}
+                  className="px-4 py-2 text-sm bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors"
+                >
+                  {t('common.cancel')}
+                </button>
+                <button
+                  onClick={() => {
+                    if (exportFrom && exportTo) {
+                            if (exportFrom >= exportTo) {
+        alert(t('analytics.startDateMustBeBeforeEndDate'));
+        return;
+      }
+                      exportHistoricalData();
+                      // Don't close modal during export - let user see progress
+                    } else {
+                      alert(t('analytics.pleaseSelectBothStartAndEndDates'));
+                    }
+                  }}
+                  className="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={!exportFrom || !exportTo || isExporting}
+                >
+                  {isExporting ? t('analytics.exporting') : t('analytics.exportData')}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   );

@@ -18,6 +18,7 @@ import { DateTimePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import TextField from '@mui/material/TextField';
 import { API_CONFIG, buildApiUrl } from '../../../config/api';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 const SITES_API_URL = buildApiUrl('/api/sites');
 const DATA_API_URL = buildApiUrl('/api/data');
@@ -49,15 +50,19 @@ async function fetchGlobalStats({
   return res.json();
 }
 
-// Time period options
-const timePeriods = [
-  { label: '7d', value: '7d', granularity: 'day' },
-  { label: '30d', value: '30d', granularity: 'day' },
-  { label: 'Custom', value: 'custom', granularity: 'day' }
-];
+
 
 export default function DashboardContent() {
   const { data: session, status } = useSession();
+  const { t } = useLanguage();
+  
+  // Time period options
+  const timePeriods = [
+    { label: '7d', value: '7d', granularity: 'day' },
+    { label: '30d', value: '30d', granularity: 'day' },
+    { label: t('common.custom'), value: 'custom', granularity: 'day' }
+  ];
+  
   const [sites, setSites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [energyData, setEnergyData] = useState<number[]>([]);
@@ -125,40 +130,37 @@ export default function DashboardContent() {
     return data.length > 0 && data.some(value => value > 0);
   };
 
-  // Get date range based on selected period
+  // Get date range based on selected period (using UTC time)
   const getDateRange = () => {
     const now = new Date();
     
-    // Adjust for timezone offset to get local midnight
-    const timezoneOffset = now.getTimezoneOffset() * 60 * 1000;
-    
-    // Set to end of current day for consistent period boundaries (local time)
-    const to = new Date(now.getTime() - timezoneOffset + 24 * 60 * 60 * 1000 - 1).toISOString();
+    // Use UTC time for consistent boundaries
+    const utcNow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+    const to = utcNow.toISOString();
     let from: string;
 
     switch (selectedPeriod) {
       case '7d':
-        // Calculate exactly 7 days ago, starting from beginning of that day (local time)
-        // Add one day to compensate for timezone shift that causes data to appear on wrong day
-        const sevenDaysAgo = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-        from = new Date(sevenDaysAgo.getTime() - timezoneOffset).toISOString();
+        // Calculate exactly 7 days ago in UTC
+        const sevenDaysAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6, 0, 0, 0, 0));
+        from = sevenDaysAgo.toISOString();
         break;
       case '30d':
-        // Add one day to compensate for timezone shift
-        const thirtyDaysAgo = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000);
-        from = new Date(thirtyDaysAgo.getTime() - timezoneOffset).toISOString();
+        // Calculate exactly 30 days ago in UTC
+        const thirtyDaysAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 29, 0, 0, 0, 0));
+        from = thirtyDaysAgo.toISOString();
         break;
       case 'custom':
         if (customFrom && customTo) {
           return { from: customFrom, to: customTo };
         }
         // Fallback to 7d if custom dates not set
-        const fallbackDate = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-        from = new Date(fallbackDate.getTime() - timezoneOffset).toISOString();
+        const fallbackDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6, 0, 0, 0, 0));
+        from = fallbackDate.toISOString();
         break;
       default:
-        const defaultDate = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
-        from = new Date(defaultDate.getTime() - timezoneOffset).toISOString();
+        const defaultDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6, 0, 0, 0, 0));
+        from = defaultDate.toISOString();
     }
 
     return { from, to };
@@ -302,23 +304,23 @@ export default function DashboardContent() {
     disabled?: boolean 
   }) => (
     <button
-      className={`absolute top-2 right-12 z-10 bg-white rounded-full p-1 shadow hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed`}
+      className={`absolute top-2 right-12 z-10 bg-white dark:bg-gray-700 rounded-full p-1 shadow hover:bg-gray-100 dark:hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed`}
       onClick={onClick}
       disabled={disabled}
       aria-label="Export chart data"
       type="button"
     >
-      <ArrowDownTrayIcon className="w-5 h-5 text-gray-500" />
+      <ArrowDownTrayIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
     </button>
   );
 
-  // Time period selector component
+    // Time period selector component
   const TimePeriodSelector = () => (
-    <div className="bg-white rounded-lg shadow p-4 mb-4">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4">
       <div className="flex flex-wrap items-center gap-2 sm:gap-4">
         <div className="flex items-center gap-2">
-          <CalendarIcon className="w-5 h-5 text-gray-500" />
-          <span className="text-sm font-medium text-gray-700">Time Period:</span>
+          <CalendarIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Time Period:</span>
         </div>
         <div className="flex flex-wrap gap-2">
           {timePeriods.map((period) => (
@@ -335,7 +337,7 @@ export default function DashboardContent() {
               className={`px-3 py-1 text-sm rounded-md transition-colors ${
                 selectedPeriod === period.value
                   ? 'bg-blue-500 text-white'
-                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
               }`}
             >
               {period.label}
@@ -354,7 +356,7 @@ export default function DashboardContent() {
                 }}
                 format="yyyy-MM-dd HH:mm"
               />
-              <span className="text-gray-500">to</span>
+              <span className="text-gray-500 dark:text-gray-400">to</span>
               <DateTimePicker
                 label="To"
                 value={draftCustomTo}
@@ -378,7 +380,7 @@ export default function DashboardContent() {
                 type="button"
               >
                 Apply
-              </button>
+                </button>
             </div>
           </LocalizationProvider>
         )}
@@ -393,9 +395,21 @@ export default function DashboardContent() {
       setLoading(true);
       try {
         let url = `${SITES_API_URL}`;
-        if (session.user.role !== 'superadmin') {
+        let queryParams = new URLSearchParams();
+        
+        if (session.user.role === 'superadmin') {
+          // Superadmin gets all sites
+          queryParams.append('role', 'superadmin');
+        } else {
+          // Admin, user, technicien get sites assigned to them
           url = `${SITES_API_URL}/user/${session.user.id}`;
         }
+        
+        // Add query parameters if any
+        if (queryParams.toString()) {
+          url += `?${queryParams.toString()}`;
+        }
+        
         console.log('Fetching sites from URL:', url);
         const res = await fetch(url);
         console.log('Sites API response status:', res.status);
@@ -536,12 +550,12 @@ export default function DashboardContent() {
   // Maximize button SVG
   const MaximizeButton = ({ onClick }: { onClick: () => void }) => (
     <button
-      className="absolute top-2 right-2 z-10 bg-white rounded-full p-1 shadow hover:bg-gray-100"
+      className="absolute top-2 right-2 z-10 bg-white dark:bg-gray-700 rounded-full p-1 shadow hover:bg-gray-100 dark:hover:bg-gray-600"
       onClick={onClick}
       aria-label="Maximize chart"
       type="button"
     >
-      <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+      <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4h4M20 8V4h-4M4 16v4h4m12-4v4h-4" />
       </svg>
     </button>
@@ -559,31 +573,31 @@ export default function DashboardContent() {
     } else if (maximizedChart === 'water') {
       xAxis = [{ data: waterLabels.slice(0, waterMinLen) }];
       series = [{ data: waterData.slice(0, waterMinLen), label: 'Water', color: '#9333EA' }];
-      chartTitle = 'Water Usage (m³)';
+              chartTitle = `${t('devices.water')} ${t('analytics.consumption')} (m³)`;
       chartType = 'water';
     } else if (maximizedChart === 'gas') {
       xAxis = [{ data: gasLabels.slice(0, gasMinLen) }];
       series = [{ data: gasData.slice(0, gasMinLen), label: 'Gas', color: '#EF4444' }];
-      chartTitle = 'Gas Usage (m³)';
+              chartTitle = `${t('devices.gas')} ${t('analytics.consumption')} (m³)`;
       chartType = 'gas';
     } else {
       return null;
     }
     return (
       <div className="fixed inset-0 z-50 bg-black bg-opacity-60 flex items-center justify-center">
-        <div className="bg-white rounded-lg shadow-lg p-6 w-[95vw] max-w-6xl h-[80vh] relative flex flex-col">
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 w-[95vw] max-w-6xl h-[80vh] relative flex flex-col">
           <button
-            className="absolute top-2 right-2 z-10 bg-white rounded-full p-1 shadow hover:bg-gray-100"
+            className="absolute top-2 right-2 z-10 bg-white dark:bg-gray-700 rounded-full p-1 shadow hover:bg-gray-100 dark:hover:bg-gray-600"
             onClick={() => setMaximizedChart(null)}
             aria-label="Close"
             type="button"
           >
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-gray-500 dark:text-gray-400" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
           <button
-            className="absolute top-2 right-12 z-10 bg-white rounded-full p-1 shadow hover:bg-gray-100"
+            className="absolute top-2 right-12 z-10 bg-white dark:bg-gray-700 rounded-full p-1 shadow hover:bg-gray-100 dark:hover:bg-gray-600"
             onClick={() => {
               if (chartType === 'energy') {
                 exportChartData(energyData.slice(0, energyMinLen), energyLabels.slice(0, energyMinLen), 'energy');
@@ -596,9 +610,9 @@ export default function DashboardContent() {
             aria-label="Export chart data"
             type="button"
           >
-            <ArrowDownTrayIcon className="w-5 h-5 text-gray-500" />
+            <ArrowDownTrayIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
           </button>
-          <h2 className="text-lg font-semibold text-center mb-4">{chartTitle}</h2>
+          <h2 className="text-lg font-semibold text-center mb-4 text-gray-900 dark:text-gray-100">{chartTitle}</h2>
           <div className="flex-1 flex items-center justify-center">
             <BarChart xAxis={xAxis} series={series} height={500} />
           </div>
@@ -653,49 +667,49 @@ export default function DashboardContent() {
     return (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
         {/* Total Consumption */}
-        <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-3">
           <div className="flex items-center">
             <ArrowTrendingUpIcon className="w-5 h-5 text-green-600" />
             <div className="ml-2">
-              <p className="text-xs font-medium text-green-800">Total Consumption</p>
-              <p className="text-sm font-bold text-green-900">{formatValue(stats.total)}</p>
-              <p className="text-xs text-green-600">Selected period</p>
+                              <p className="text-xs font-medium text-green-800 dark:text-green-300">{t('analytics.consumption')}</p>
+              <p className="text-sm font-bold text-green-900 dark:text-green-100">{formatValue(stats.total)}</p>
+                                  <p className="text-xs text-green-600 dark:text-green-400">{t('time.thisWeek')}</p>
             </div>
           </div>
         </div>
 
         {/* Average per day */}
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-3">
           <div className="flex items-center">
             <ChartBarIcon className="w-5 h-5 text-blue-600" />
             <div className="ml-2">
-              <p className="text-xs font-medium text-blue-800">Average per day</p>
-              <p className="text-sm font-bold text-blue-900">{formatValue(stats.average)}</p>
-              <p className="text-xs text-blue-600">Average consumption</p>
+              <p className="text-xs font-medium text-blue-800 dark:text-blue-300">Average per day</p>
+              <p className="text-sm font-bold text-blue-900 dark:text-blue-100">{formatValue(stats.average)}</p>
+              <p className="text-xs text-blue-600 dark:text-blue-400">Average consumption</p>
             </div>
           </div>
         </div>
 
         {/* Peak Consumption */}
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+        <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-700 rounded-lg p-3">
           <div className="flex items-center">
             <BoltIcon className="w-5 h-5 text-purple-600" />
             <div className="ml-2">
-              <p className="text-xs font-medium text-purple-800">Peak Consumption</p>
-              <p className="text-sm font-bold text-purple-900">{formatValue(stats.peak)}</p>
-              <p className="text-xs text-purple-600">Highest daily usage</p>
+              <p className="text-xs font-medium text-purple-800 dark:text-purple-300">Peak Consumption</p>
+              <p className="text-sm font-bold text-purple-900 dark:text-purple-100">{formatValue(stats.peak)}</p>
+                                  <p className="text-xs text-purple-600 dark:text-purple-400">{t('analytics.dailyConsumption')}</p>
             </div>
           </div>
         </div>
 
         {/* Data Points */}
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3">
           <div className="flex items-center">
             <CalendarIcon className="w-5 h-5 text-yellow-600" />
             <div className="ml-2">
-              <p className="text-xs font-medium text-yellow-800">Data Points</p>
-              <p className="text-sm font-bold text-yellow-900">{stats.dataPoints}</p>
-              <p className="text-xs text-yellow-600">Data periods</p>
+              <p className="text-xs font-medium text-yellow-800 dark:text-yellow-300">Data Points</p>
+              <p className="text-sm font-bold text-yellow-900 dark:text-yellow-100">{stats.dataPoints}</p>
+              <p className="text-xs text-yellow-600 dark:text-yellow-400">Data periods</p>
             </div>
           </div>
         </div>
@@ -703,7 +717,7 @@ export default function DashboardContent() {
     );
   };
 
-  if (loading) return <div>Loading sites...</div>;
+  if (loading) return <div className="p-6 text-center text-gray-600 dark:text-gray-400">Loading sites...</div>;
 
   // Calculate minLen for each chart to ensure xAxis and series data lengths match
   const energyMinLen = Math.min(energyLabels.length, energyData.length);
@@ -711,7 +725,7 @@ export default function DashboardContent() {
   const gasMinLen = Math.min(gasLabels.length, gasData.length);
 
   return (
-    <div className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
+    <div className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6 bg-gray-50 dark:bg-gray-900">
       {/* Time Period Selector */}
       <TimePeriodSelector />
 
@@ -719,14 +733,14 @@ export default function DashboardContent() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
         {/* Energy Stats - Only show if it has data */}
         {hasData(energyData) && (
-          <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
             <div className="flex items-center">
               <div className="p-2 sm:p-3 rounded-lg bg-blue-500">
                 <BoltIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
               <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Total Energy Consumption</p>
-                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 truncate">{t('analytics.consumption')} - {t('devices.energy')}</p>
+                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100">
                   {formatValue('energy', energyIndex !== null ? energyIndex : energyTotal)}
                 </p>
               </div>
@@ -742,21 +756,21 @@ export default function DashboardContent() {
               }`}>
                 {energyChange.change}
               </span>
-              <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last hour</span>
+              <span className="ml-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400 hidden sm:inline">from last hour</span>
             </div>
           </div>
         )}
 
         {/* Water Stats - Only show if it has data */}
         {hasData(waterData) && (
-          <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
             <div className="flex items-center">
               <div className="p-2 sm:p-3 rounded-lg bg-purple-500">
                 <CloudIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
               <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Water Usage</p>
-                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 truncate">{t('devices.water')} {t('analytics.consumption')}</p>
+                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100">
                   {formatValue('water', waterIndex !== null ? waterIndex : waterTotal)}
                 </p>
               </div>
@@ -772,21 +786,21 @@ export default function DashboardContent() {
               }`}>
                 {waterChange.change}
               </span>
-              <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last hour</span>
+              <span className="ml-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400 hidden sm:inline">from last hour</span>
             </div>
           </div>
         )}
 
         {/* Gas Stats - Only show if it has data */}
         {hasData(gasData) && (
-          <div className="bg-white rounded-lg shadow p-4 sm:p-6">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
             <div className="flex items-center">
               <div className="p-2 sm:p-3 rounded-lg bg-red-500">
                 <FireIcon className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
               </div>
               <div className="ml-3 sm:ml-4 flex-1 min-w-0">
-                <p className="text-xs sm:text-sm font-medium text-gray-600 truncate">Gas Usage</p>
-                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                <p className="text-xs sm:text-sm font-medium text-gray-600 dark:text-gray-400 truncate">{t('devices.gas')} {t('analytics.consumption')}</p>
+                <p className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100">
                   {formatValue('gas', gasIndex !== null ? gasIndex : gasTotal)}
                 </p>
               </div>
@@ -802,17 +816,17 @@ export default function DashboardContent() {
               }`}>
                 {gasChange.change}
               </span>
-              <span className="ml-2 text-xs sm:text-sm text-gray-500 hidden sm:inline">from last hour</span>
+              <span className="ml-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400 hidden sm:inline">from last hour</span>
             </div>
           </div>
         )}
 
         {/* Show message when no stats have data */}
         {!hasData(energyData) && !hasData(waterData) && !hasData(gasData) && (
-          <div className="col-span-full bg-white rounded-lg shadow p-8 text-center">
+          <div className="col-span-full bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
             <BoltIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No Devices Connected</h3>
-            <p className="text-gray-500">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">No Devices Connected</h3>
+            <p className="text-gray-500 dark:text-gray-400">
               No devices are currently connected. Please check your device connections and ensure they are properly configured.
             </p>
           </div>
@@ -844,13 +858,13 @@ export default function DashboardContent() {
           <div className={`${gridClasses} gap-4 sm:gap-6`}>
             {/* Energy Chart - Only show if it has data */}
             {hasData(energyData) && (
-              <div className="bg-white rounded-lg shadow p-4 sm:p-6 relative">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6 relative">
                 <MaximizeButton onClick={() => setMaximizedChart('energy')} />
                 <ExportButton 
                   onClick={() => exportChartData(energyData.slice(0, energyMinLen), energyLabels.slice(0, energyMinLen), 'energy')}
                   disabled={!hasData(energyData)}
                 />
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Energy Consumption (kWh)</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">Energy Consumption (kWh)</h3>
                 <BarChart
                   xAxis={[{ data: energyLabels.slice(0, energyMinLen) }]}
                   series={[{ data: energyData.slice(0, energyMinLen), label: 'Energy', color: '#3B82F6' }]}
@@ -862,13 +876,13 @@ export default function DashboardContent() {
 
             {/* Water Chart - Only show if it has data */}
             {hasData(waterData) && (
-              <div className="bg-white rounded-lg shadow p-4 sm:p-6 relative">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6 relative">
                 <MaximizeButton onClick={() => setMaximizedChart('water')} />
                 <ExportButton 
                   onClick={() => exportChartData(waterData.slice(0, waterMinLen), waterLabels.slice(0, waterMinLen), 'water')}
                   disabled={!hasData(waterData)}
                 />
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Water Usage (m³)</h3>
+                <h3 className="text-base sm:text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">{t('devices.water')} {t('analytics.consumption')} (m³)</h3>
                 <BarChart
                   xAxis={[{ data: waterLabels.slice(0, waterMinLen) }]}
                   series={[{ data: waterData.slice(0, waterMinLen), label: 'Water', color: '#9333EA' }]}
@@ -880,13 +894,13 @@ export default function DashboardContent() {
 
             {/* Gas Chart - Only show if it has data */}
             {hasData(gasData) && (
-              <div className="bg-white rounded-lg shadow p-4 sm:p-6 relative">
+              <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6 relative">
                 <MaximizeButton onClick={() => setMaximizedChart('gas')} />
                 <ExportButton 
                   onClick={() => exportChartData(gasData.slice(0, gasMinLen), gasLabels.slice(0, gasMinLen), 'gas')}
                   disabled={!hasData(gasData)}
                 />
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-3 sm:mb-4">Gas Usage (m³)</h3>
+                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">{t('devices.gas')} {t('analytics.consumption')} (m³)</h3>
                 <BarChart
                   xAxis={[{ data: gasLabels.slice(0, gasMinLen) }]}
                   series={[{ data: gasData.slice(0, gasMinLen), label: 'Gas', color: '#EF4444' }]}
@@ -898,10 +912,10 @@ export default function DashboardContent() {
 
             {/* Show message when no charts have data */}
             {!hasData(energyData) && !hasData(waterData) && !hasData(gasData) && (
-              <div className="col-span-full bg-white rounded-lg shadow p-8 text-center">
+              <div className="col-span-full bg-white dark:bg-gray-800 rounded-lg shadow p-8 text-center">
                 <ChartBarIcon className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No Device Data Available</h3>
-                <p className="text-gray-500">
+                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">No Device Data Available</h3>
+                <p className="text-gray-500 dark:text-gray-400">
                   No devices are currently sending data for the selected time period. Charts will appear here when devices are connected and transmitting data.
                 </p>
               </div>
@@ -911,7 +925,7 @@ export default function DashboardContent() {
       })()}
 
       {/* Map */}
-      <div className="bg-white rounded-lg shadow">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
         <div className="h-64 sm:h-80 md:h-96">
           <MapWrapper sites={sites} />
         </div>

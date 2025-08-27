@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import 'leaflet/dist/leaflet.css';
 import { useSession } from 'next-auth/react';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 // Dynamic imports for client-side only
 let MapContainer: any, TileLayer: any, Marker: any, useMapEvents: any, useMap: any, L: any, LeafletMap: any;
@@ -146,6 +147,8 @@ function CenterMapButton({ sites }: { sites: Site[] }) {
 }
 
 export default function CreateSiteContent() {
+  const { data: session, status } = useSession();
+  const { t } = useLanguage();
   const [sites, setSites] = useState<Site[]>([]);
   const [siteName, setSiteName] = useState('');
   const [siteType, setSiteType] = useState('manufacturing');
@@ -160,10 +163,9 @@ export default function CreateSiteContent() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-  const { data: session, status } = useSession();
 
-  // Only allow admins to create sites
-  const isAdmin = session?.user?.role === 'admin' || session?.user?.role === 'superadmin';
+  // Only allow admins and sous admins to create sites
+  const isAdmin = session?.user?.role === 'admin' || session?.user?.role === 'superadmin' || session?.user?.role === 'sous admin';
 
   // Load Leaflet components on mount
   useEffect(() => {
@@ -183,8 +185,8 @@ export default function CreateSiteContent() {
     if (session.user.role) {
       params.append('role', session.user.role);
     }
-    if (session.user.role === 'admin' && session.user.id) {
-      params.append('createdBy', session.user.id);
+    if ((session.user.role === 'admin' || session.user.role === 'sous admin') && session.user.id) {
+      params.append('userId', session.user.id);
     }
     
     if (params.toString()) {
@@ -331,13 +333,13 @@ export default function CreateSiteContent() {
             </div>
           </div>
           <div className="rounded-xl shadow-lg border bg-white p-6">
-            <h2 className="text-2xl font-bold mb-4 text-blue-700">Create Site</h2>
+            <h2 className="text-2xl font-bold mb-4 text-blue-700">{t('sites.createSite')}</h2>
             <div className="text-gray-500">Loading form...</div>
           </div>
         </div>
         <div className="w-full lg:w-96 flex-shrink-0">
           <div className="rounded-xl shadow-lg border bg-white p-6">
-            <h3 className="font-semibold text-lg mb-4 text-blue-700">Sites</h3>
+            <h3 className="font-semibold text-lg mb-4 text-blue-700">{t('sites.title')}</h3>
             <div className="text-gray-500">Loading sites...</div>
           </div>
         </div>
@@ -349,10 +351,10 @@ export default function CreateSiteContent() {
   const DefaultIcon = getDefaultIcon(L);
 
   return (
-    <div className="flex flex-col lg:flex-row gap-8 p-4 lg:p-8 bg-gray-50 min-h-screen">
+    <div className="flex flex-col lg:flex-row gap-8 p-4 lg:p-8 bg-gray-50 dark:bg-gray-900 min-h-screen">
       {/* Left: Map and Form Section */}
       <div className="flex-1 flex flex-col items-stretch">
-        <div className="rounded-xl shadow-lg border bg-white overflow-hidden mb-6">
+        <div className="rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden mb-6">
           <MapContainer
             center={[35.6892, 51.389]}
             zoom={13}
@@ -376,15 +378,15 @@ export default function CreateSiteContent() {
             <LocationMarker position={selectedPos} setPosition={setSelectedPos} />
           </MapContainer>
         </div>
-        <div className="rounded-xl shadow-lg border bg-white p-6">
-          <h2 className="text-2xl font-bold mb-4 text-blue-700">{editingId ? 'Edit Site' : 'Create Site'}</h2>
+        <div className="rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6">
+          <h2 className="text-2xl font-bold mb-4 text-blue-700 dark:text-blue-400">{editingId ? t('sites.editSite') : t('sites.createSite')}</h2>
           {status === 'loading' && (
-            <div className="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded">
+            <div className="mb-4 p-3 bg-blue-100 dark:bg-blue-900/20 border border-blue-400 dark:border-blue-700 text-blue-700 dark:text-blue-300 rounded">
               Loading user session...
             </div>
           )}
           {status === 'authenticated' && !session?.user?.id && (
-            <div className="mb-4 p-3 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
+            <div className="mb-4 p-3 bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-400 dark:border-yellow-700 text-yellow-700 dark:text-yellow-300 rounded">
               Warning: User ID not found in session. This may cause issues with site creation.
               <br />
               <small>Session data: {JSON.stringify(session?.user)}</small>
@@ -392,9 +394,9 @@ export default function CreateSiteContent() {
           )}
           <form className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
-              <label className="font-semibold">Site Name<span className="text-red-500">*</span></label>
+              <label className="font-semibold text-gray-900 dark:text-gray-100">{t('sites.siteName')}<span className="text-red-500">*</span></label>
               <input
-                className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 type="text"
                 placeholder="Site Name"
                 value={editingId ? editName : siteName}
@@ -403,9 +405,9 @@ export default function CreateSiteContent() {
               />
             </div>
             <div className="flex flex-col gap-2">
-              <label className="font-semibold">Type<span className="text-red-500">*</span></label>
+              <label className="font-semibold text-gray-900 dark:text-gray-100">{t('common.type')}<span className="text-red-500">*</span></label>
               <select
-                className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 value={editingId ? editType : siteType}
                 onChange={e => editingId ? setEditType(e.target.value) : setSiteType(e.target.value)}
                 required
@@ -418,9 +420,9 @@ export default function CreateSiteContent() {
               </select>
             </div>
             <div className="flex flex-col gap-2 md:col-span-2">
-              <label className="font-semibold">Address</label>
+              <label className="font-semibold text-gray-900 dark:text-gray-100">{t('sites.siteAddress')}</label>
               <input
-                className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 type="text"
                 placeholder="Address (optional)"
                 value={editingId ? editAddress : address}
@@ -428,24 +430,24 @@ export default function CreateSiteContent() {
               />
             </div>
             <div className="flex flex-col gap-2 md:col-span-2">
-              <label className="font-semibold">Description</label>
+              <label className="font-semibold text-gray-900 dark:text-gray-100">Description</label>
               <textarea
-                className="border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                className="border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 placeholder="Description (optional)"
                 value={editingId ? editDescription : description}
                 onChange={e => editingId ? setEditDescription(e.target.value) : setDescription(e.target.value)}
               />
             </div>
             <div className="flex flex-col gap-2 md:col-span-2">
-              <label className="font-semibold">Location<span className="text-red-500">*</span></label>
-              <span className="text-sm text-gray-600">Click on the map to select a location.</span>
-              <span className="text-xs text-gray-500">Lat: {selectedPos ? selectedPos[0].toFixed(5) : '--'}, Lng: {selectedPos ? selectedPos[1].toFixed(5) : '--'}</span>
+              <label className="font-semibold text-gray-900 dark:text-gray-100">Location<span className="text-red-500">*</span></label>
+              <span className="text-sm text-gray-600 dark:text-gray-400">Click on the map to select a location.</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">Lat: {selectedPos ? selectedPos[0].toFixed(5) : '--'}, Lng: {selectedPos ? selectedPos[1].toFixed(5) : '--'}</span>
             </div>
             <div className="md:col-span-2 flex gap-2 mt-2">
               {editingId ? (
                 <>
                   <button
-                    className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 disabled:opacity-50"
+                    className="bg-green-500 dark:bg-green-600 text-white px-4 py-2 rounded hover:bg-green-600 dark:hover:bg-green-700 disabled:opacity-50"
                     type="button"
                     onClick={handleUpdate}
                     disabled={!editName || !selectedPos || !editType || loading}
@@ -453,7 +455,7 @@ export default function CreateSiteContent() {
                     Update Site
                   </button>
                   <button
-                    className="bg-gray-300 px-4 py-2 rounded hover:bg-gray-400"
+                    className="bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 px-4 py-2 rounded hover:bg-gray-400 dark:hover:bg-gray-500"
                     type="button"
                     onClick={() => {
                       setEditingId(null);
@@ -469,7 +471,7 @@ export default function CreateSiteContent() {
                 </>
               ) : (
                 <button
-                  className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 disabled:opacity-50"
+                  className="bg-blue-500 dark:bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-600 dark:hover:bg-blue-700 disabled:opacity-50"
                   type="button"
                   onClick={handleCreate}
                   disabled={!isAdmin || !siteName || !selectedPos || !siteType || loading}
@@ -479,19 +481,19 @@ export default function CreateSiteContent() {
               )}
             </div>
           </form>
-          {error && <div className="text-red-500 mt-2">{error}</div>}
-          {loading && <div className="text-blue-500 mt-2">Loading...</div>}
+          {error && <div className="text-red-500 dark:text-red-400 mt-2">{error}</div>}
+          {loading && <div className="text-blue-500 dark:text-blue-400 mt-2">Loading...</div>}
         </div>
       </div>
       {/* Right: Sites List */}
       <div className="w-full lg:w-96 flex-shrink-0">
-        <div className="rounded-xl shadow-lg border bg-white p-6 flex flex-col">
-          <h3 className="font-semibold text-lg mb-4 text-blue-700">Sites</h3>
+        <div className="rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 flex flex-col">
+          <h3 className="font-semibold text-lg mb-4 text-blue-700 dark:text-blue-400">Sites</h3>
           <ul className="space-y-3 overflow-y-auto max-h-[500px] pr-2">
             {sites.map(site => (
               <li
                 key={site._id}
-                className="flex items-center gap-3 border p-3 rounded-lg hover:shadow transition-shadow bg-gray-50"
+                className="flex items-center gap-3 border border-gray-200 dark:border-gray-600 p-3 rounded-lg hover:shadow transition-shadow bg-gray-50 dark:bg-gray-700"
               >
                 <span className="flex-shrink-0">
                   <img
@@ -501,21 +503,21 @@ export default function CreateSiteContent() {
                   />
                 </span>
                 <div className="flex-1 min-w-0">
-                  <div className="font-semibold truncate">{site.name}</div>
-                  <div className="text-xs text-gray-500 truncate">{site.address || 'No address'}</div>
-                  <div className="text-xs text-gray-400">Lat: {site.location.latitude.toFixed(4)}, Lng: {site.location.longitude.toFixed(4)}</div>
-                  <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full font-medium bg-blue-100 text-blue-700`}>{site.type}</span>
+                  <div className="font-semibold truncate text-gray-900 dark:text-gray-100">{site.name}</div>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 truncate">{site.address || 'No address'}</div>
+                  <div className="text-xs text-gray-400 dark:text-gray-500">Lat: {site.location.latitude.toFixed(4)}, Lng: {site.location.longitude.toFixed(4)}</div>
+                  <span className={`inline-block mt-1 px-2 py-0.5 text-xs rounded-full font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-200`}>{site.type}</span>
                 </div>
                 <div className="flex flex-col gap-1">
                   <button
-                    className="bg-yellow-400 px-2 py-1 rounded hover:bg-yellow-500 text-xs"
+                    className="bg-yellow-400 dark:bg-yellow-500 px-2 py-1 rounded hover:bg-yellow-500 dark:hover:bg-yellow-600 text-xs transition"
                     onClick={() => handleEdit(site)}
                     disabled={loading}
                   >
                     Edit
                   </button>
                   <button
-                    className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-600 text-xs"
+                    className="bg-red-500 dark:bg-red-600 text-white px-2 py-1 rounded hover:bg-red-600 dark:hover:bg-red-700 text-xs transition"
                     onClick={() => handleDelete(site._id)}
                     disabled={loading}
                   >
@@ -525,7 +527,7 @@ export default function CreateSiteContent() {
               </li>
             ))}
           </ul>
-          {sites.length === 0 && <div className="text-gray-400 text-center mt-8">No sites found.</div>}
+          {sites.length === 0 && <div className="text-gray-400 dark:text-gray-500 text-center mt-8">No sites found.</div>}
         </div>
       </div>
     </div>

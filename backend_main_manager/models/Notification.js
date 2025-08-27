@@ -49,7 +49,7 @@ const notificationSchema = new mongoose.Schema({
   // Notification delivery preferences
   deliveryPreferences: {
     email: {
-      enabled: { type: Boolean, default: false },
+      enabled: { type: Boolean, default: true }, // Changed from false to true
       frequency: {
         type: String,
         enum: ['immediate', 'hourly', 'daily', 'weekly'],

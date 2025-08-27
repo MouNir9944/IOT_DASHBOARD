@@ -3,11 +3,13 @@ import React, { useState, useEffect } from 'react';
 import DashboardLayout from '../components/DashboardLayout';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import { useLanguage } from '../../../contexts/LanguageContext';
 
 const API_URL = process.env.NEXT_PUBLIC_BACKEND_URL; // Base API URL
 
 export default function CreateUserPage() {
   const { data: session, status } = useSession();
+  const { t } = useLanguage();
   const router = useRouter();
 
   const [name, setName] = useState('');
@@ -24,6 +26,19 @@ export default function CreateUserPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<'create' | 'edit'>('create');
   const [apiStatus, setApiStatus] = useState<string>('checking');
+
+  // Debug logging
+  console.log('CreateUserPage - Session status:', status);
+  console.log('CreateUserPage - Session user:', session?.user);
+  console.log('CreateUserPage - User role:', session?.user?.role);
+  console.log('CreateUserPage - User ID:', session?.user?.id);
+  console.log('CreateUserPage - Role comparison:', {
+    isAdmin: session?.user?.role === 'admin',
+    isSuperadmin: session?.user?.role === 'superadmin',
+    isSousAdmin: session?.user?.role === 'sous admin',
+    roleString: `"${session?.user?.role}"`,
+    roleLength: session?.user?.role?.length
+  });
 
   // Check API health
   useEffect(() => {
@@ -44,11 +59,14 @@ export default function CreateUserPage() {
       });
   }, []);
 
-  if (status === 'loading') return <div className="p-6">Loading...</div>;
+  if (status === 'loading') return <div className="p-6 text-center text-gray-600 dark:text-gray-400">{t('common.loading')}</div>;
   if (
     !session ||
-    (session.user?.role !== 'admin' && session.user?.role !== 'superadmin')
+    (session.user?.role !== 'admin' && session.user?.role !== 'superadmin' && session.user?.role !== 'sous admin')
   ) {
+    console.log('CreateUserPage - Access denied, redirecting to dashboard');
+    console.log('CreateUserPage - Required roles: admin, superadmin, or sous admin');
+    console.log('CreateUserPage - User role:', session?.user?.role);
     router.replace('/dashboard');
     return null;
   }
@@ -63,8 +81,8 @@ export default function CreateUserPage() {
     if (session.user.role) {
       params.append('role', session.user.role);
     }
-    if (session.user.role === 'admin' && session.user.id) {
-      params.append('createdBy', session.user.id);
+    if ((session.user.role === 'admin' || session.user.role === 'sous admin') && session.user.id) {
+      params.append('userId', session.user.id);
     }
     
     if (params.toString()) {
@@ -96,8 +114,8 @@ export default function CreateUserPage() {
     if (!session?.user?.role) return;
     let url = `${API_URL}/api/users?role=${session.user.role}`;
     
-    // Add createdBy parameter for admin users
-    if (session.user.role === 'admin' && session.user.id) {
+    // Add createdBy parameter for admin and sous admin users
+    if ((session.user.role === 'admin' || session.user.role === 'sous admin') && session.user.id) {
       url += `&createdBy=${session.user.id}`;
     }
     
@@ -142,7 +160,7 @@ export default function CreateUserPage() {
     setLoading(true);
     setError('');
     try {
-      const url = `${API_URL}/api/users/${userId}`;
+      const url = `${API_URL}/api/users/${userId}?creatorRole=${session?.user?.role}&createdBy=${session?.user?.id}`;
       console.log('Deleting user at:', url);
       const res = await fetch(url, {
         method: 'DELETE',
@@ -180,8 +198,8 @@ export default function CreateUserPage() {
       setLoading(false);
       return;
     }
-    if (role === 'installator' && sites.length === 0) {
-      setError('Please assign at least one site to this installator');
+    if (role === 'technicien' && sites.length === 0) {
+      setError('Please assign at least one site to this technicien');
       setLoading(false);
       return;
     }
@@ -203,7 +221,8 @@ export default function CreateUserPage() {
       password, 
       role, 
       sites,
-      createdBy: session?.user?.id || null // Include the creator's ID
+      createdBy: session?.user?.id || null, // Include the creator's ID
+      creatorRole: session?.user?.role || null // Include the creator's role for backend validation
     };
     console.log('Submitting payload:', payload);
     
@@ -293,28 +312,28 @@ export default function CreateUserPage() {
       
       <div className="flex justify-center mt-6 mb-4 w-full px-2 sm:px-0">
         <button
-          className="bg-blue-600 text-white py-2 px-4 rounded font-semibold hover:bg-blue-700 transition w-full max-w-xs sm:max-w-md"
+          className="bg-blue-600 dark:bg-blue-500 text-white py-2 px-4 rounded font-semibold hover:bg-blue-700 dark:hover:bg-blue-600 transition w-full max-w-xs sm:max-w-md"
           onClick={openCreateModal}
         >
-          Create User
+          {t('users.createUser')}
         </button>
       </div>
       {/* Modal for Create/Edit User */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 px-2">
-          <div className="bg-white p-4 sm:p-8 rounded-xl shadow-lg w-full max-w-xs sm:max-w-lg relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 dark:bg-opacity-60 px-2">
+          <div className="bg-white dark:bg-gray-800 p-4 sm:p-8 rounded-xl shadow-lg w-full max-w-xs sm:max-w-lg relative">
             <button
-              className="absolute top-2 right-2 text-gray-500 hover:text-gray-700 text-2xl"
+              className="absolute top-2 right-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-2xl"
               onClick={() => setIsModalOpen(false)}
             >
               &times;
             </button>
-            <h2 className="text-2xl font-bold mb-6 text-blue-700">{modalMode === 'edit' ? 'Edit User' : 'Create New User'}</h2>
+            <h2 className="text-2xl font-bold mb-6 text-blue-700 dark:text-blue-400">{modalMode === 'edit' ? t('users.editUser') : t('users.createUser')}</h2>
             <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
               <div>
-                <label className="block font-semibold mb-1">Name</label>
+                <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.name')}</label>
                 <input
-                  className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   type="text"
                   value={name}
                   onChange={e => setName(e.target.value)}
@@ -322,9 +341,9 @@ export default function CreateUserPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-1">Email</label>
+                <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.email')}</label>
                 <input
-                  className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
@@ -332,9 +351,9 @@ export default function CreateUserPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-1">Password</label>
+                <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('profile.changePassword')}</label>
                 <input
-                  className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
@@ -342,9 +361,9 @@ export default function CreateUserPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-1">Role</label>
+                <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.role')}</label>
                 <select
-                  className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={role}
                   onChange={e => setRole(e.target.value)}
                   required
@@ -352,26 +371,38 @@ export default function CreateUserPage() {
                   {session.user.role === 'superadmin' && (
                     <option value="superadmin">Superadmin - Full system access</option>
                   )}
-                  <option value="admin">Admin - Site management access</option>
-                  <option value="installator">Installator - Device installation access</option>
-                  <option value="user">User - Basic site access</option>
+                  {session.user.role === 'superadmin' && (
+                    <option value="admin">Admin - Site management access</option>
+                  )}
+                  {(session.user.role === 'superadmin' || session.user.role === 'admin') && (
+                    <option value="sous admin">Sous Admin - Limited admin access</option>
+                  )}
+                  {(session.user.role === 'superadmin' || session.user.role === 'admin' || session.user.role === 'sous admin') && (
+                    <option value="technicien">Technicien - Device installation access</option>
+                  )}
+                  {(session.user.role === 'superadmin' || session.user.role === 'admin' || session.user.role === 'sous admin') && (
+                    <option value="user">User - Basic site access</option>
+                  )}
                 </select>
-                <div className="text-xs text-gray-600 mt-1">
+                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                   {role === 'user' && 'Users can only be assigned to one site'}
-                  {role === 'installator' && 'Installators require at least one assigned site'}
-                  {role === 'admin' && 'Admins can manage multiple sites and create other admins'}
-                  {role === 'superadmin' && 'Superadmins have access to all sites'}
+                  {role === 'technicien' && 'Techniciens require at least one assigned site'}
+                  {role === 'sous admin' && 'Sous Admins can manage multiple sites and create techniciens and users'}
+                  {role === 'admin' && 'Admins can manage multiple sites and create sous admins, techniciens, and users (but not other admins)'}
+                  {role === 'superadmin' && 'Superadmins have access to all sites and can create all roles'}
                 </div>
               </div>
               <div>
-                <label className="block font-semibold mb-1">
-                  Assign Sites {sites.length > 0 && <span className="text-green-600">({sites.length} selected)</span>}
+                <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">
+                  Assign Sites {sites.length > 0 && <span className="text-green-600 dark:text-green-400">({sites.length} selected)</span>}
                 </label>
-                <div className="text-xs text-gray-600 mb-2">
+                <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
                   {session.user.role === 'superadmin' 
                     ? 'Superadmin can assign any site to users'
                     : session.user.role === 'admin'
                     ? 'Admin can assign their accessible sites to users'
+                    : session.user.role === 'sous admin'
+                    ? 'Sous Admin can assign their accessible sites to users'
                     : role === 'user'
                     ? 'Users can only be assigned to one site'
                     : 'Select sites to assign to this user'
@@ -379,7 +410,7 @@ export default function CreateUserPage() {
                 </div>
                 {role === 'user' ? (
                   <select
-                    className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     value={sites[0] || ''}
                     onChange={e => {
                       setSites(e.target.value ? [e.target.value] : []);
@@ -395,14 +426,14 @@ export default function CreateUserPage() {
                   </select>
                 ) : (
                   <select
-                    className="w-full border p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 min-h-[120px]"
+                    className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 min-h-[120px]"
                     multiple
                     value={sites}
                     onChange={e => {
                       const selected = Array.from(e.target.selectedOptions, option => option.value);
                       setSites(selected);
                     }}
-                    required={role === 'installator'}
+                    required={role === 'technicien'}
                   >
                     {allSites.length === 0 ? (
                       <option disabled>No sites available</option>
@@ -416,20 +447,20 @@ export default function CreateUserPage() {
                   </select>
                 )}
                 {role !== 'user' && (
-                  <div className="text-xs text-gray-500 mt-1">
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     Hold Ctrl (or Cmd on Mac) to select multiple sites
                   </div>
                 )}
                 {sites.length > 0 && (
                   <div className="mt-2">
-                    <div className="text-xs font-semibold text-gray-700 mb-1">Selected Sites:</div>
+                    <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Selected Sites:</div>
                     <div className="flex flex-wrap gap-1">
                       {sites.map(siteId => {
                         const site = allSites.find(s => s._id === siteId);
                         return site ? (
                           <span 
                             key={siteId}
-                            className="inline-block bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded"
+                            className="inline-block bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 text-xs px-2 py-1 rounded"
                           >
                             {site.name}
                           </span>
@@ -439,8 +470,8 @@ export default function CreateUserPage() {
                   </div>
                 )}
               </div>
-              <button
-                className="w-full bg-blue-600 text-white py-2 rounded font-semibold hover:bg-blue-700 transition disabled:opacity-50"
+                            <button
+                className="w-full bg-blue-600 dark:bg-blue-500 text-white py-2 rounded font-semibold hover:bg-blue-700 dark:hover:bg-blue-600 transition disabled:opacity-50"
                 type="submit"
                 disabled={loading}
               >
@@ -449,13 +480,13 @@ export default function CreateUserPage() {
                     ? 'Updating...'
                     : 'Creating...'
                   : modalMode === 'edit'
-                  ? 'Update User'
-                  : 'Create User'}
+                    ? 'Update User'
+                    : 'Create User'}
               </button>
               {editingUser && (
                 <button
                   type="button"
-                  className="w-full mt-2 bg-gray-300 text-gray-700 py-2 rounded font-semibold hover:bg-gray-400 transition"
+                  className="w-full mt-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 py-2 rounded font-semibold hover:bg-gray-400 dark:hover:bg-gray-500 transition"
                   onClick={() => {
                     setEditingUser(null);
                     setName('');
@@ -470,50 +501,50 @@ export default function CreateUserPage() {
                 </button>
               )}
             </form>
-            {success && <div className="text-green-600 mt-4">{success}</div>}
-            {error && <div className="text-red-600 mt-4">{error}</div>}
+            {success && <div className="text-green-600 dark:text-green-400 mt-4">{success}</div>}
+            {error && <div className="text-red-600 dark:text-red-400 mt-4">{error}</div>}
           </div>
         </div>
       )}
       {/* Error Display */}
       {error && (
-        <div className="w-full mt-4 bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded">
+        <div className="w-full mt-4 bg-red-100 dark:bg-red-900/20 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-300 px-4 py-3 rounded">
           <strong>Error:</strong> {error}
         </div>
       )}
       
       {/* Success Display */}
       {success && (
-        <div className="w-full mt-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded">
+        <div className="w-full mt-4 bg-green-100 dark:bg-green-900/20 border border-green-400 dark:border-green-700 text-green-700 dark:text-green-300 px-4 py-3 rounded">
           <strong>Success:</strong> {success}
         </div>
       )}
       
       {/* Users Table */}
-      <div className="w-full mt-6 bg-white p-2 sm:p-8 rounded-xl shadow-lg overflow-x-auto">
-        <h2 className="text-xl font-bold mb-4 text-blue-700">Users</h2>
+      <div className="w-full mt-6 bg-white dark:bg-gray-800 p-2 sm:p-8 rounded-xl shadow-lg overflow-x-auto">
+        <h2 className="text-xl font-bold mb-4 text-blue-700 dark:text-blue-400">Users</h2>
         {users.length === 0 ? (
-          <div className="text-gray-500">No users found.</div>
+          <div className="text-gray-500 dark:text-gray-400">No users found.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full border text-left text-xs sm:text-sm">
-              <thead>
+            <table className="min-w-full border border-gray-300 dark:border-gray-600 text-left text-xs sm:text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <th className="border-b p-2">Name</th>
-                  <th className="border-b p-2">Email</th>
-                  <th className="border-b p-2">Role</th>
-                  <th className="border-b p-2">Sites</th>
-                  <th className="border-b p-2">Created By</th>
-                  <th className="border-b p-2">Actions</th>
+                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">Name</th>
+                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">Email</th>
+                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">Role</th>
+                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">Sites</th>
+                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">Created By</th>
+                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">Actions</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {users.map((user, idx) => (
-                  <tr key={user._id || idx}>
-                    <td className="border-b p-2">{user.name || '-'}</td>
-                    <td className="border-b p-2">{user.email || '-'}</td>
-                    <td className="border-b p-2">{user.role || '-'}</td>
-                    <td className="border-b p-2">
+                  <tr key={user._id || idx} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">{user.name || '-'}</td>
+                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">{user.email || '-'}</td>
+                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">{user.role || '-'}</td>
+                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">
                       {user.sites && user.sites.length > 0
                         ? user.sites.map((site: any) => typeof site === 'string'
                             ? (allSites.find(s => s._id === site)?.name || site)
@@ -521,22 +552,22 @@ export default function CreateUserPage() {
                           ).join(', ')
                         : 'None'}
                     </td>
-                    <td className="border-b p-2">
+                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">
                       {user.createdBy ? (
                         users.find(u => u._id === user.createdBy)?.name || 'Unknown'
                       ) : (
                         'System'
                       )}
                     </td>
-                    <td className="border-b p-2">
+                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">
                       <button
-                        className="bg-yellow-400 px-2 py-1 rounded mr-2"
+                        className="bg-yellow-400 dark:bg-yellow-500 px-2 py-1 rounded mr-2 hover:bg-yellow-500 dark:hover:bg-yellow-600 transition"
                         onClick={() => openEditModal(user)}
                       >
                         Edit
                       </button>
                       <button
-                        className="bg-red-500 text-white px-2 py-1 rounded"
+                        className="bg-red-500 dark:bg-red-600 text-white px-2 py-1 rounded hover:bg-red-600 dark:hover:bg-red-700 transition"
                         onClick={() => handleDelete(user._id)}
                       >
                         Delete

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
+import { useLanguage } from '../../../../../../../../contexts/LanguageContext';
 import { useRouter } from 'next/navigation';
 import { use } from 'react';
 import DashboardLayout from '../../../../../../components/DashboardLayout';
@@ -80,10 +81,11 @@ interface AlertForm {
   };
 }
 
-export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: string; deviceid: string }> }) {
+export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: string; deviceId: string }> }) {
   const { data: session } = useSession();
+  const { t } = useLanguage();
   const router = useRouter();
-  const { siteId, deviceid } = use(params);
+  const { siteId, deviceId} = use(params);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -121,7 +123,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
   });
 
   const waterParameters = [
-    { value: 'flowRate', label: 'Flow Rate', unit: 'L/min', icon: CloudIcon },
+    { value: 'flowRate', label: 'Flow Rate', unit: 'L/s', icon: CloudIcon },
     { value: 'pressure', label: 'Pressure', unit: 'bar', icon: ExclamationTriangleIcon },
     { value: 'temperature', label: 'Temperature', unit: '°C', icon: InformationCircleIcon },
     { value: 'consumption', label: 'Consumption', unit: 'm³', icon: CloudIcon }
@@ -140,7 +142,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
   useEffect(() => {
     fetchWaterDevices();
     fetchAlertConfigurations();
-  }, [siteId, deviceid]);
+  }, [siteId, deviceId]);
 
   // Reset selected users when modal closes
   useEffect(() => {
@@ -167,7 +169,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
       setWaterDevices(waterDevices);
       
       // Find the current device
-      const currentDevice = waterDevices.find((device: WaterDevice) => device.deviceId === deviceid);
+      const currentDevice = waterDevices.find((device: WaterDevice) => device.deviceId=== deviceId);
       setSelectedDevice(currentDevice || null);
     } catch (error) {
       console.error('Error fetching water devices:', error);
@@ -177,7 +179,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
 
   const fetchAlertConfigurations = async () => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceid}/alerts`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceId}/alerts`, {
         headers: {
           'Authorization': `Bearer ${session?.accessToken}`,
         },
@@ -241,7 +243,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
       // Ensure the current user is automatically assigned to the alert
       const currentUserEmail = session?.user?.email;
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceid}/alerts`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceId}/alerts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -308,7 +310,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
     }
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceid}/alerts/${alertId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceId}/alerts/${alertId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${session?.accessToken}`,
@@ -329,7 +331,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
 
   const handleToggleAlert = async (alertId: string) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceid}/alerts/${alertId}/toggle`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceId}/alerts/${alertId}/toggle`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${session?.accessToken}`,
@@ -440,7 +442,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
         return user ? user.email : userId;
       });
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceid}/alerts/${selectedAlertForAssignment.id}/assign-users`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceId}/alerts/${selectedAlertForAssignment.id}/assign-users`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -511,33 +513,33 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
 
   return (
     <DashboardLayout user={session?.user || {}}>
-      <div className="max-w-6xl mx-auto p-6">
+      <div className="max-w-6xl mx-auto p-6 bg-gray-50 dark:bg-gray-900">
         {/* Header */}
         <div className="flex items-center gap-4 mb-6">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-2 text-blue-600 hover:text-blue-800 transition-colors"
+            className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
           >
             <ArrowLeftIcon className="w-5 h-5" />
             Back to Water Devices
           </button>
           <div className="flex items-center gap-2">
-            <BellIcon className="w-8 h-8 text-blue-600" />
-            <h1 className="text-2xl font-bold text-gray-900">Water Alert Management</h1>
+            <BellIcon className="w-8 h-8 text-blue-600 dark:text-blue-400" />
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Water Alert Management</h1>
           </div>
         </div>
 
         {selectedDevice && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <h2 className="text-lg font-semibold text-blue-900 mb-2">Current Device</h2>
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mb-6">
+            <h2 className="text-lg font-semibold text-blue-900 dark:text-blue-200 mb-2">Current Device</h2>
             <div className="flex items-center gap-3">
-              <CloudIcon className="w-6 h-6 text-blue-600" />
-              <span className="font-medium">{selectedDevice.name}</span>
-              <span className="text-sm text-gray-600">({selectedDevice.deviceId})</span>
+              <CloudIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <span className="font-medium text-gray-900 dark:text-gray-100">{selectedDevice.name}</span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">({selectedDevice.deviceId})</span>
               <span className={`ml-auto px-2 py-1 rounded-full text-xs ${
                 selectedDevice.status === 'active' 
-                  ? 'bg-green-100 text-green-800' 
-                  : 'bg-red-100 text-red-800'
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200' 
+                  : 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200'
               }`}>
                 {selectedDevice.status}
               </span>
@@ -546,40 +548,40 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
         )}
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-6">
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 px-4 py-3 rounded mb-6">
             {error}
           </div>
         )}
 
         {success && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded mb-6">
+          <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 px-4 py-3 rounded mb-6">
             {success}
           </div>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Alert Creation Form */}
-          <div className="bg-white p-6 rounded-xl shadow-lg">
-            <h2 className="text-xl font-semibold mb-4 text-blue-700">Create New Alert Configuration</h2>
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+            <h2 className="text-xl font-semibold mb-4 text-blue-700 dark:text-blue-400">{t('alerts.createAlert')}</h2>
             <form onSubmit={handleAlertSubmit} className="space-y-4">
               <div>
-                <label className="block font-semibold mb-2">Alert Title</label>
+                <label className="block font-semibold mb-2 text-gray-900 dark:text-gray-100">{t('alerts.title')}</label>
                 <input
                   type="text"
                   value={alertForm.title}
                   onChange={(e) => setAlertForm({...alertForm, title: e.target.value})}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   placeholder="e.g., High Flow Rate Alert"
                   required
                 />
               </div>
 
               <div>
-                <label className="block font-semibold mb-2">Alert Message</label>
+                <label className="block font-semibold mb-2 text-gray-900 dark:text-gray-100">{t('alerts.message')}</label>
                 <textarea
                   value={alertForm.message}
                   onChange={(e) => setAlertForm({...alertForm, message: e.target.value})}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   placeholder="Describe the alert details..."
                   rows={3}
                   required
@@ -588,43 +590,43 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-semibold mb-2">Alert Type</label>
+                  <label className="block font-semibold mb-2 text-gray-900 dark:text-gray-100">{t('alerts.type')}</label>
                   <select
                     value={alertForm.type}
                     onChange={(e) => setAlertForm({...alertForm, type: e.target.value as any})}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     required
                   >
-                    <option value="info">Info</option>
-                    <option value="success">Success</option>
-                    <option value="warning">Warning</option>
-                    <option value="error">Error</option>
-                    <option value="critical">Critical</option>
+                    <option value="info">{t('alerts.info')}</option>
+                    <option value="success">{t('alerts.success')}</option>
+                    <option value="warning">{t('alerts.warning')}</option>
+                    <option value="error">{t('alerts.error')}</option>
+                    <option value="critical">{t('alerts.critical')}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-2">Priority</label>
+                  <label className="block font-semibold mb-2 text-gray-900 dark:text-gray-100">{t('alerts.priority')}</label>
                   <select
                     value={alertForm.priority}
                     onChange={(e) => setAlertForm({...alertForm, priority: e.target.value as any})}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     required
                   >
-                    <option value="low">Low</option>
-                    <option value="medium">Medium</option>
-                    <option value="high">High</option>
-                    <option value="critical">Critical</option>
+                    <option value="low">{t('alerts.priorityLow')}</option>
+                    <option value="medium">{t('alerts.priorityMedium')}</option>
+                    <option value="high">{t('alerts.priorityHigh')}</option>
+                    <option value="critical">{t('alerts.priorityCritical')}</option>
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className="block font-semibold mb-2">Water Parameter</label>
+                <label className="block font-semibold mb-2 text-gray-900 dark:text-gray-100">Water Parameter</label>
                 <select
                   value={alertForm.parameter}
                   onChange={(e) => setAlertForm({...alertForm, parameter: e.target.value})}
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   required
                 >
                   {waterParameters.map((param) => {
@@ -640,24 +642,24 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-semibold mb-2">Threshold Value</label>
+                  <label className="block font-semibold mb-2 text-gray-900 dark:text-gray-100">{t('common.threshold')} {t('common.value')}</label>
                   <input
                     type="number"
                     step="0.01"
                     value={alertForm.threshold}
                     onChange={(e) => setAlertForm({...alertForm, threshold: parseFloat(e.target.value)})}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     placeholder="0.00"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block font-semibold mb-2">Condition</label>
+                  <label className="block font-semibold mb-2 text-gray-900 dark:text-gray-100">{t('common.condition')}</label>
                   <select
                     value={alertForm.condition}
                     onChange={(e) => setAlertForm({...alertForm, condition: e.target.value as any})}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     required
                   >
                     <option value="above">Above</option>
@@ -669,7 +671,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block font-semibold mb-2">Email Notifications</label>
+                  <label className="block font-semibold mb-2 text-gray-900 dark:text-gray-100">Email Notifications</label>
                   <div className="flex items-center gap-2">
                     <input
                       type="checkbox"
@@ -677,16 +679,16 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                       onChange={(e) => setAlertForm({...alertForm, emailEnabled: e.target.checked})}
                       className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                     />
-                    <span className="text-sm text-gray-700">Send email notifications</span>
+                    <span className="text-sm text-gray-700 dark:text-gray-300">Send email notifications</span>
                   </div>
                 </div>
                 
                 <div>
-                  <label className="block font-semibold mb-2">Alert Frequency</label>
+                  <label className="block font-semibold mb-2 text-gray-900 dark:text-gray-100">Alert Frequency</label>
                   <select
                     value={alertForm.periodicity}
                     onChange={(e) => setAlertForm({...alertForm, periodicity: e.target.value as any})}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     required
                   >
                     <option value="immediate">Immediate</option>
@@ -709,16 +711,16 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                     })}
                     className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                   />
-                  <label className="block font-semibold">Enable Schedule Restrictions</label>
+                  <label className="block font-semibold text-gray-900 dark:text-gray-100">Enable Schedule Restrictions</label>
                   {alertForm.schedule.enabled && (
-                    <span className="ml-2 px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800">
+                    <span className="ml-2 px-2 py-1 rounded-full text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200">
                       Scheduled
                     </span>
                   )}
                 </div>
                 
                 {!alertForm.schedule.enabled && (
-                  <p className="text-sm text-gray-600 mb-4 pl-6">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 pl-6">
                     When disabled, alerts will be active 24/7. Enable to restrict alerts to specific days and times.
                   </p>
                 )}
@@ -726,9 +728,9 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                 {alertForm.schedule.enabled && (
                   <div className="space-y-4 pl-6 border-l-2 border-blue-200">
                     {/* Schedule Summary */}
-                    <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
-                      <h4 className="text-sm font-semibold text-purple-800 mb-2">Current Schedule:</h4>
-                      <div className="text-sm text-purple-700 space-y-1">
+                    <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-700">
+                      <h4 className="text-sm font-semibold text-purple-800 dark:text-purple-200 mb-2">Current Schedule:</h4>
+                      <div className="text-sm text-purple-700 dark:text-purple-300 space-y-1">
                         <p><strong>Days:</strong> {alertForm.schedule.daysOfWeek.map(day => day.charAt(0).toUpperCase() + day.slice(1)).join(', ')}</p>
                         <p><strong>Times:</strong> {alertForm.schedule.timeSlots.map(slot => `${slot.startTime} - ${slot.endTime}`).join(', ')}</p>
         
@@ -737,8 +739,8 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                     
                     {/* Days of Week */}
                     <div>
-                      <label className="block font-semibold mb-2">Active Days</label>
-                      <p className="text-sm text-gray-600 mb-2">Select the days when this alert should be active:</p>
+                      <label className="block font-semibold mb-2 text-gray-900 dark:text-gray-100">Active Days</label>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Select the days when this alert should be active:</p>
                       <div className="grid grid-cols-4 gap-2">
                         {['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].map((day) => (
                           <label key={day} className="flex items-center gap-2">
@@ -766,19 +768,19 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                               }}
                               className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                             />
-                            <span className="text-sm capitalize">{day}</span>
+                            <span className="text-sm capitalize text-gray-900 dark:text-gray-100">{day}</span>
                           </label>
                         ))}
                       </div>
                       {alertForm.schedule.daysOfWeek.length === 0 && (
-                        <p className="text-sm text-red-600 mt-1">Please select at least one day</p>
+                        <p className="text-sm text-red-600 dark:text-red-400 mt-1">Please select at least one day</p>
                       )}
                     </div>
 
                     {/* Time Slots */}
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <label className="block font-semibold">Active Time Slots</label>
+                        <label className="block font-semibold text-gray-900 dark:text-gray-100">Active Time Slots</label>
                         <button
                           type="button"
                           onClick={() => setAlertForm({
@@ -788,12 +790,12 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                               timeSlots: [...alertForm.schedule.timeSlots, { startTime: '09:00', endTime: '17:00' }]
                             }
                           })}
-                          className="text-sm bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200 transition-colors"
+                          className="text-sm bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-1 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors border border-blue-200 dark:border-blue-700"
                         >
                           + Add Time Slot
                         </button>
                       </div>
-                      <p className="text-sm text-gray-600 mb-2">Define when during the day this alert should be active:</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">Define when during the day this alert should be active:</p>
                       
                       <div className="space-y-2">
                         {alertForm.schedule.timeSlots.map((slot, index) => (
@@ -809,9 +811,9 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                                   schedule: { ...alertForm.schedule, timeSlots: newTimeSlots }
                                 });
                               }}
-                              className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                             />
-                            <span className="text-sm text-gray-500">to</span>
+                            <span className="text-sm text-gray-500 dark:text-gray-400">to</span>
                             <input
                               type="time"
                               value={slot.endTime}
@@ -823,7 +825,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                                   schedule: { ...alertForm.schedule, timeSlots: newTimeSlots }
                                 });
                               }}
-                              className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="border border-gray-300 dark:border-gray-600 rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                             />
                             {alertForm.schedule.timeSlots.length > 1 && (
                               <button
@@ -835,7 +837,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                                     schedule: { ...alertForm.schedule, timeSlots: newTimeSlots }
                                   });
                                 }}
-                                className="text-red-500 hover:text-red-700 text-sm"
+                                className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 text-sm"
                               >
                                 ×
                               </button>
@@ -844,7 +846,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                         ))}
                       </div>
                       {alertForm.schedule.timeSlots.length === 0 && (
-                        <p className="text-sm text-red-600 mt-1">Please add at least one time slot</p>
+                        <p className="text-sm text-red-600 dark:text-red-400 mt-1">Please add at least one time slot</p>
                       )}
                     </div>
 
@@ -856,7 +858,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-blue-600 dark:bg-blue-500 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Saving Alert...' : 'Save Alert Configuration'}
               </button>
@@ -864,11 +866,11 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
           </div>
 
           {/* Existing Alert Configurations */}
-          <div className="bg-white p-6 rounded-xl shadow-lg">
-            <h2 className="text-xl font-semibold mb-4 text-blue-700">
+          <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+            <h2 className="text-xl font-semibold mb-4 text-blue-700 dark:text-blue-400">
               {session?.user?.role === 'superadmin' ? 'All Alert Configurations' : 'Your Alert Configurations'}
             </h2>
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
               {session?.user?.role === 'superadmin' 
                 ? 'Showing all alerts for this device' 
                 : 'Showing alerts created by you'
@@ -876,8 +878,8 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
             </p>
             
             {alertConfigurations.length === 0 ? (
-              <div className="text-center py-8 text-gray-500">
-                <BellIcon className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                <BellIcon className="w-12 h-12 mx-auto mb-4 text-gray-300 dark:text-gray-500" />
                 <p>No alert configurations found</p>
                 <p className="text-sm">Create your first alert configuration using the form</p>
               </div>
@@ -888,14 +890,14 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                   const selectedParameter = waterParameters.find(p => p.value === alert.parameter);
                   
                   return (
-                    <div key={alert.id} className={`border rounded-lg p-4 ${alert.isActive ? 'border-blue-200 bg-blue-50' : 'border-gray-200 bg-gray-50'}`}>
+                    <div key={alert.id} className={`border rounded-lg p-4 ${alert.isActive ? 'border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700'}`}>
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-2">
-                          <IconComponent className="w-5 h-5 text-blue-600" />
-                          <h3 className="font-semibold text-gray-900">{alert.title}</h3>
+                          <IconComponent className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                          <h3 className="font-semibold text-gray-900 dark:text-gray-100">{alert.title}</h3>
                           {/* Schedule Status Indicator */}
                           {alert.schedule && alert.schedule.enabled && (
-                            <span className="px-2 py-1 rounded-full text-xs bg-purple-100 text-purple-800 flex items-center gap-1">
+                            <span className="px-2 py-1 rounded-full text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200 flex items-center gap-1">
                               <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
                               Scheduled
                             </span>
@@ -911,24 +913,24 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                         </div>
                       </div>
                       
-                      <p className="text-sm text-gray-600 mb-3">{alert.message}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{alert.message}</p>
                       
-                      <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
+                      <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400 mb-3">
                         <span>Parameter: {selectedParameter?.label}</span>
                         <span>Threshold: {alert.threshold} {selectedParameter?.unit}</span>
                         <span>Condition: {alert.condition}</span>
                         {alert.createdBy && (
-                          <span className="text-xs text-gray-500">Created by: {alert.createdBy}</span>
+                          <span className="text-xs text-gray-500 dark:text-gray-400">Created by: {alert.createdBy}</span>
                         )}
                       </div>
                       
                       {/* Assigned Users */}
                       {alert.assignedUsers && alert.assignedUsers.length > 0 && (
-                        <div className="mb-3 p-2 bg-blue-50 rounded-lg">
-                          <h4 className="text-xs font-semibold text-blue-700 mb-1">Assigned Users:</h4>
+                        <div className="mb-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+                          <h4 className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">Assigned Users:</h4>
                           <div className="flex flex-wrap gap-1">
                             {alert.assignedUsers.map((userEmail, index) => (
-                              <span key={`${alert.id}-${userEmail}-${index}`} className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                              <span key={`${alert.id}-${userEmail}-${index}`} className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
                                 {userEmail}
                               </span>
                             ))}
@@ -937,11 +939,11 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                       )}
                       
                       {/* Alert Settings */}
-                      <div className="mb-3 p-3 bg-gray-50 rounded-lg">
-                        <h4 className="text-sm font-semibold text-gray-700 mb-2">Alert Settings:</h4>
-                        <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="mb-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+                        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Alert Settings:</h4>
+                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-600 dark:text-gray-400">
                           <div className="flex items-center gap-1">
-                            <span className={`w-2 h-2 rounded-full ${alert.emailEnabled ? 'bg-green-500' : 'bg-gray-300'}`}></span>
+                            <span className={`w-2 h-2 rounded-full ${alert.emailEnabled ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-500'}`}></span>
                             <span>Email: {alert.emailEnabled ? 'Enabled' : 'Disabled'}</span>
                           </div>
                           <div className="flex items-center gap-1">
@@ -952,9 +954,9 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                         
                         {/* Schedule Information */}
                         {alert.schedule && alert.schedule.enabled && (
-                          <div className="mt-2 pt-2 border-t border-gray-200">
-                            <h5 className="text-xs font-semibold text-gray-700 mb-1">Schedule:</h5>
-                            <div className="space-y-1 text-xs">
+                          <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-600">
+                            <h5 className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Schedule:</h5>
+                            <div className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
                               <div className="flex items-center gap-1">
                                 <span className="w-2 h-2 rounded-full bg-purple-500"></span>
                                 <span>Days: {alert.schedule.daysOfWeek.map(day => day.charAt(0).toUpperCase() + day.slice(1, 3)).join(', ')}</span>
@@ -975,8 +977,8 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                               onClick={() => handleToggleAlert(alert.id)}
                               className={`flex items-center gap-1 px-3 py-1 rounded text-xs transition-colors ${
                                 alert.isActive 
-                                  ? 'bg-green-100 text-green-700 hover:bg-green-200' 
-                                  : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 hover:bg-green-200 dark:hover:bg-green-900/50' 
+                                  : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
                               }`}
                             >
                               {alert.isActive ? <EyeIcon className="w-4 h-4" /> : <EyeSlashIcon className="w-4 h-4" />}
@@ -984,7 +986,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                             </button>
                             <button
                               onClick={() => handleOpenUserAssignment(alert)}
-                              className="flex items-center gap-1 px-3 py-1 rounded text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+                              className="flex items-center gap-1 px-3 py-1 rounded text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-200 dark:hover:bg-blue-900/50 transition-colors border border-blue-200 dark:border-blue-700"
                             >
                               <PencilIcon className="w-4 h-4" />
                               Assign Users
@@ -994,7 +996,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => handleDeleteAlert(alert.id)}
-                              className="flex items-center gap-1 px-3 py-1 rounded text-xs bg-red-100 text-red-700 hover:bg-red-200 transition-colors"
+                              className="flex items-center gap-1 px-3 py-1 rounded text-xs bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors border border-red-200 dark:border-red-700"
                             >
                               <TrashIcon className="w-4 h-4" />
                               Delete
@@ -1012,8 +1014,8 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
 
 
         {/* Parameter Information */}
-        <div className="mt-8 bg-white p-6 rounded-xl shadow-lg">
-          <h2 className="text-xl font-semibold mb-4 text-blue-700">Water Parameters Reference</h2>
+        <div className="mt-8 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+          <h2 className="text-xl font-semibold mb-4 text-blue-700 dark:text-blue-400">Water Parameters Reference</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {waterParameters.map((param) => {
               const IconComponent = param.icon;
@@ -1024,21 +1026,21 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                   key={param.value}
                   className={`p-4 rounded-lg border-2 transition-colors cursor-pointer ${
                     isSelected 
-                      ? 'border-blue-500 bg-blue-50' 
-                      : 'border-gray-200 hover:border-gray-300'
+                      ? 'border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-900/20' 
+                      : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'
                   }`}
                   onClick={() => setAlertForm({...alertForm, parameter: param.value})}
                 >
                   <div className="flex items-center gap-3">
-                    <IconComponent className={`w-6 h-6 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`} />
+                    <IconComponent className={`w-6 h-6 ${isSelected ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-gray-400'}`} />
                     <div className="flex-1">
-                      <h3 className={`font-semibold ${isSelected ? 'text-blue-700' : 'text-gray-900'}`}>
+                      <h3 className={`font-semibold ${isSelected ? 'text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-gray-100'}`}>
                         {param.label}
                       </h3>
-                      <p className="text-sm text-gray-600">Unit: {param.unit}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Unit: {param.unit}</p>
                     </div>
                     {isSelected && (
-                      <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                      <div className="w-2 h-2 bg-blue-600 dark:bg-blue-400 rounded-full"></div>
                     )}
                   </div>
                 </div>
@@ -1048,15 +1050,15 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
         </div>
 
         {/* Schedule Information */}
-        <div className="mt-8 bg-white p-6 rounded-xl shadow-lg">
-          <h2 className="text-xl font-semibold mb-4 text-purple-700">Schedule Configuration Guide</h2>
+        <div className="mt-8 bg-white dark:bg-gray-800 p-6 rounded-xl shadow-lg">
+          <h2 className="text-xl font-semibold mb-4 text-purple-700 dark:text-purple-400">Schedule Configuration Guide</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
-              <h3 className="text-lg font-semibold mb-3 text-purple-600">Days of the Week</h3>
-              <p className="text-gray-600 mb-3">
+              <h3 className="text-lg font-semibold mb-3 text-purple-600 dark:text-purple-300">Days of the Week</h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-3">
                 Select which days of the week your alerts should be active. This is useful for:
               </p>
-              <ul className="text-sm text-gray-600 space-y-1">
+              <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
                 <li>• Business hours only (Monday-Friday)</li>
                 <li>• Weekend monitoring (Saturday-Sunday)</li>
                 <li>• Specific operational days</li>
@@ -1065,11 +1067,11 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
             </div>
             
             <div>
-              <h3 className="text-lg font-semibold mb-3 text-purple-600">Time Slots</h3>
-              <p className="text-gray-600 mb-3">
+              <h3 className="text-lg font-semibold mb-3 text-purple-600 dark:text-purple-300">Time Slots</h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-3">
                 Define specific time periods when alerts should be active. You can create multiple time slots:
               </p>
-              <ul className="text-sm text-gray-600 space-y-1">
+              <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-1">
                 <li>• Business hours (9:00 AM - 5:00 PM)</li>
                 <li>• Night shift (10:00 PM - 6:00 AM)</li>
                 <li>• Peak usage times</li>
@@ -1078,9 +1080,9 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
             </div>
           </div>
           
-          <div className="mt-6 p-4 bg-purple-50 rounded-lg border border-purple-200">
-            <h4 className="font-semibold text-purple-800 mb-2">💡 Pro Tips:</h4>
-            <div className="text-sm text-purple-700 space-y-1">
+          <div className="mt-6 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-700">
+            <h4 className="font-semibold text-purple-800 dark:text-purple-200 mb-2">💡 Pro Tips:</h4>
+            <div className="text-sm text-purple-700 dark:text-purple-300 space-y-1">
               
               <p>• <strong>Multiple slots:</strong> Create overlapping or separate time periods as needed</p>
               <p>• <strong>Midnight crossing:</strong> Time slots can span midnight (e.g., 10:00 PM to 6:00 AM)</p>
@@ -1091,29 +1093,29 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
 
         {/* User Assignment Modal */}
         {showUserAssignmentModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+          <div className="fixed inset-0 bg-black bg-opacity-50 dark:bg-opacity-70 flex items-center justify-center z-50">
+            <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md mx-4">
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                     Assign Users to Alert
                   </h3>
                   {selectedAlertForAssignment && (
-                    <p className="text-sm text-gray-600 mt-1">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                       {selectedAlertForAssignment.title}
                     </p>
                   )}
                 </div>
                 <button
                   onClick={handleCloseUserAssignmentModal}
-                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                  className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
                 >
                   <XCircleIcon className="w-6 h-6" />
                 </button>
               </div>
 
               {selectedAlertForAssignment && (
-                <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
                   <div className="flex items-center gap-2 mb-2">
                     <span className={`px-2 py-1 rounded-full text-xs ${getAlertTypeColor(selectedAlertForAssignment.type)}`}>
                       {selectedAlertForAssignment.type}
@@ -1122,10 +1124,10 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                       {selectedAlertForAssignment.priority}
                     </span>
                   </div>
-                  <p className="text-sm text-blue-700">
+                  <p className="text-sm text-blue-700 dark:text-blue-300">
                     {selectedAlertForAssignment.message}
                   </p>
-                  <div className="mt-2 text-xs text-blue-600">
+                  <div className="mt-2 text-xs text-blue-600 dark:text-blue-400">
                     Parameter: {selectedAlertForAssignment.parameter} | 
                     Threshold: {selectedAlertForAssignment.threshold} | 
                     Condition: {selectedAlertForAssignment.condition}
@@ -1142,29 +1144,29 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                 <div className="space-y-3">
                   <div className="mb-4">
                     <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-semibold text-gray-700">
+                      <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300">
                         Select Users to Assign:
                       </label>
                       <div className="flex gap-2">
                         <button
                           type="button"
                           onClick={() => setSelectedUsers(availableUsers.map(user => user.id))}
-                          className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                          className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded hover:bg-blue-200 dark:hover:bg-blue-900/50 border border-blue-200 dark:border-blue-700"
                         >
                           Select All
                         </button>
                         <button
                           type="button"
                           onClick={() => setSelectedUsers([])}
-                          className="text-xs px-2 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                          className="text-xs px-2 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-200 dark:border-gray-600"
                         >
                           Clear All
                         </button>
                       </div>
                     </div>
-                    <div className="max-h-60 overflow-y-auto border border-gray-200 rounded-lg">
+                    <div className="max-h-60 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700">
                       {availableUsers.length === 0 ? (
-                        <div className="p-4 text-center text-gray-500">
+                        <div className="p-4 text-center text-gray-500 dark:text-gray-400">
                           No users available for assignment
                         </div>
                       ) : (
@@ -1172,7 +1174,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                           {availableUsers.map((user) => (
                             <label
                               key={user.id}
-                              className="flex items-center gap-3 p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                              className="flex items-center gap-3 p-3 hover:bg-gray-50 dark:hover:bg-gray-600 cursor-pointer border-b border-gray-100 dark:border-gray-600 last:border-b-0"
                             >
                               <input
                                 type="checkbox"
@@ -1187,8 +1189,8 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                               />
                               <div className="flex-1">
-                                <div className="font-medium text-gray-900">{user.name}</div>
-                                <div className="text-sm text-gray-500">{user.email}</div>
+                                <div className="font-medium text-gray-900 dark:text-gray-100">{user.name}</div>
+                                <div className="text-sm text-gray-500 dark:text-gray-400">{user.email}</div>
                               </div>
                             </label>
                           ))}
@@ -1197,11 +1199,11 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                     </div>
                     {/* Current Assignment Info */}
                     {selectedAlertForAssignment?.assignedUsers && selectedAlertForAssignment.assignedUsers.length > 0 && (
-                      <div className="mt-3 p-2 bg-blue-50 rounded-lg">
-                        <h4 className="text-xs font-semibold text-blue-700 mb-1">Currently Assigned:</h4>
+                      <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-700">
+                        <h4 className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">Currently Assigned:</h4>
                         <div className="flex flex-wrap gap-1">
                           {selectedAlertForAssignment.assignedUsers.map((userEmail, index) => (
-                            <span key={`current-${userEmail}-${index}`} className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                            <span key={`current-${userEmail}-${index}`} className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
                               {userEmail}
                             </span>
                           ))}
@@ -1213,14 +1215,14 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
                   <div className="flex items-center justify-between">
                     <button
                       onClick={handleCloseUserAssignmentModal}
-                      className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+                      className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={handleAssignUsers}
                       disabled={selectedUsers.length === 0}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Assign {selectedUsers.length} User{selectedUsers.length !== 1 ? 's' : ''}
                     </button>

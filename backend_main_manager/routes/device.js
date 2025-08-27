@@ -294,8 +294,12 @@ router.get('/site/:siteId/:deviceId', async (req, res) => {
   try {
     const { siteId, deviceId } = req.params;
     
+    // Decode URL-encoded parameters (handles colons in device IDs)
+    const decodedSiteId = decodeURIComponent(siteId);
+    const decodedDeviceId = decodeURIComponent(deviceId);
+    
     // Find device that belongs to the specific site
-    const device = await Device.findOne({ deviceId, siteId }).populate('siteId', 'name');
+    const device = await Device.findOne({ deviceId: decodedDeviceId, siteId: decodedSiteId }).populate('siteId', 'name');
     if (!device) {
       return res.status(404).json({ error: 'Device not found in this site' });
     }
@@ -365,8 +369,12 @@ router.patch('/site/:siteId/:deviceId/reading', async (req, res) => {
     const { siteId, deviceId } = req.params;
     const { value, unit, timestamp } = req.body;
     
+    // Decode URL-encoded parameters (handles colons in device IDs)
+    const decodedSiteId = decodeURIComponent(siteId);
+    const decodedDeviceId = decodeURIComponent(deviceId);
+    
     // Find device that belongs to the specific site
-    const device = await Device.findOne({ deviceId, siteId }).populate('siteId', 'name');
+    const device = await Device.findOne({ deviceId: decodedDeviceId, siteId: decodedSiteId }).populate('siteId', 'name');
     if (!device) {
       return res.status(404).json({ error: 'Device not found in this site' });
     }

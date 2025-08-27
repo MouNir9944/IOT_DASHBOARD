@@ -169,12 +169,12 @@ export default function DeviceDetailPage() {
   // Debug: Log all parameters received
   console.log('🔍 All params received:', params);
   console.log('🔍 Params keys:', Object.keys(params || {}));
-  console.log('🔍 Raw deviceId param:', params?.deviceId);
+  console.log('🔍 Raw deviceid param:', params?.deviceid);
   console.log('🔍 Raw siteId param:', params?.siteId);
   
   const siteId = params?.siteId as string;
   // Decode the device ID to handle URL encoding (colons get encoded as %3A)
-  const deviceId = decodeURIComponent(params?.deviceId as string);
+  const deviceId = decodeURIComponent(params?.deviceid as string);
   
   // Debug: Log extracted values
   console.log('🔍 Extracted siteId:', siteId);

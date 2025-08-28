@@ -22,7 +22,7 @@ import {
 
 interface WaterDevice {
   id: string;
-  deviceId: string;
+  deviceid: string;
   name: string;
   type: string;
   status: string;
@@ -81,11 +81,16 @@ interface AlertForm {
   };
 }
 
-export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: string; deviceId: string }> }) {
+export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: string; deviceid: string }> }) {
   const { data: session } = useSession();
   const { t } = useLanguage();
   const router = useRouter();
-  const { siteId, deviceId} = use(params);
+  const { siteId, deviceid: encodedDeviceId } = use(params);
+  
+  // Decode the deviceid parameter to handle URL encoding
+  const deviceid = decodeURIComponent(encodedDeviceId);
+  
+
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -140,9 +145,18 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
   };
 
   useEffect(() => {
-    fetchWaterDevices();
-    fetchAlertConfigurations();
-  }, [siteId, deviceId]);
+    if (siteId && deviceid && session?.accessToken) {
+      setLoading(true);
+      setError('');
+      fetchWaterDevices();
+      fetchAlertConfigurations();
+    } else if (!session?.accessToken) {
+      // Don't set error here, just wait for session
+    } else {
+      setError('Missing site or device information');
+      setLoading(false);
+    }
+  }, [siteId, deviceid, session?.accessToken]);
 
   // Reset selected users when modal closes
   useEffect(() => {
@@ -153,6 +167,10 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
   }, [showUserAssignmentModal]);
 
   const fetchWaterDevices = async () => {
+    if (!siteId || !session?.accessToken) {
+      return;
+    }
+    
     try {
       const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/devices`, {
         headers: {
@@ -161,32 +179,49 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch devices');
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch devices: ${response.status} ${errorText}`);
       }
 
       const devices = await response.json();
       const waterDevices = devices.filter((device: any) => device.type === 'water');
+      
       setWaterDevices(waterDevices);
       
-      // Find the current device
-      const currentDevice = waterDevices.find((device: WaterDevice) => device.deviceId=== deviceId);
+      // Find the current device - check both deviceid and id fields, and also try encoded version
+      const currentDevice = waterDevices.find((device: WaterDevice) => {
+        return device.deviceid === deviceid || 
+               device.id === deviceid || 
+               device.deviceid === encodedDeviceId || 
+               device.id === encodedDeviceId;
+      });
+      
       setSelectedDevice(currentDevice || null);
+      
+      // If no device found, set error
+      if (!currentDevice) {
+        const availableDevices = waterDevices.map((d: any) => `${d.deviceid || d.id} (${d.name})`).join(', ');
+      }
     } catch (error) {
       console.error('Error fetching water devices:', error);
-      setError('Failed to fetch water devices');
     }
   };
 
   const fetchAlertConfigurations = async () => {
+    if (!deviceid || !session?.accessToken) {
+      return;
+    }
+    
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceId}/alerts`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceid}/alerts`, {
         headers: {
           'Authorization': `Bearer ${session?.accessToken}`,
         },
       });
 
       if (!response.ok) {
-        throw new Error('Failed to fetch alert configurations');
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch alert configurations: ${response.status} ${errorText}`);
       }
 
       const data = await response.json();
@@ -194,9 +229,9 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
       // For superadmin, show all alerts. For other users, show only their own alerts
       let filteredAlerts;
       if (session?.user?.role === 'superadmin') {
-        filteredAlerts = data.alertConfigurations || [];
+        filteredAlerts = data.alertConfigurations || data || [];
       } else {
-        filteredAlerts = (data.alertConfigurations || []).filter((alert: AlertConfiguration) => 
+        filteredAlerts = (data.alertConfigurations || data || []).filter((alert: AlertConfiguration) => 
           alert.createdBy === session?.user?.email || !alert.createdBy
         );
       }
@@ -204,7 +239,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
       setAlertConfigurations(filteredAlerts);
     } catch (error) {
       console.error('Error fetching alert configurations:', error);
-      setError('Failed to fetch alert configurations');
+      setError(`Failed to fetch alert configurations: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -243,7 +278,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
       // Ensure the current user is automatically assigned to the alert
       const currentUserEmail = session?.user?.email;
       
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceId}/alerts`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceid}/alerts`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -310,7 +345,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
     }
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceId}/alerts/${alertId}`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceid}/alerts/${alertId}`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${session?.accessToken}`,
@@ -331,7 +366,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
 
   const handleToggleAlert = async (alertId: string) => {
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceId}/alerts/${alertId}/toggle`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceid}/alerts/${alertId}/toggle`, {
         method: 'PATCH',
         headers: {
           'Authorization': `Bearer ${session?.accessToken}`,
@@ -442,7 +477,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
         return user ? user.email : userId;
       });
 
-      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceId}/alerts/${selectedAlertForAssignment.id}/assign-users`, {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/device/${deviceid}/alerts/${selectedAlertForAssignment.id}/assign-users`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -498,18 +533,31 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
     return colors[priority as keyof typeof colors] || colors.medium;
   };
 
-    if (loading && alertConfigurations.length === 0) {
-    return (
-      <DashboardLayout user={session?.user || {}}>
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading alert configurations...</p>
+    // Show loading state while waiting for params or session
+    if (!siteId || !deviceid || !session?.accessToken || (loading && alertConfigurations.length === 0)) {
+      return (
+        <DashboardLayout user={session?.user || {}}>
+          <div className="flex items-center justify-center h-64">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+              <p className="mt-4 text-gray-600">
+                {!siteId || !deviceid 
+                  ? 'Loading device information...' 
+                  : !session?.accessToken 
+                    ? 'Loading session...' 
+                    : 'Loading alert configurations...'
+                }
+              </p>
+              {!siteId || !deviceid ? (
+                <p className="mt-2 text-sm text-gray-500">
+                  Site ID: {siteId || 'Loading...'} | Device ID: {deviceid || 'Loading...'}
+                </p>
+              ) : null}
+            </div>
           </div>
-        </div>
-      </DashboardLayout>
-    );
-  }
+        </DashboardLayout>
+      );
+    }
 
   return (
     <DashboardLayout user={session?.user || {}}>
@@ -535,7 +583,7 @@ export default function WaterAlertsPage({ params }: { params: Promise<{ siteId: 
             <div className="flex items-center gap-3">
               <CloudIcon className="w-6 h-6 text-blue-600 dark:text-blue-400" />
               <span className="font-medium text-gray-900 dark:text-gray-100">{selectedDevice.name}</span>
-              <span className="text-sm text-gray-600 dark:text-gray-400">({selectedDevice.deviceId})</span>
+              <span className="text-sm text-gray-600 dark:text-gray-400">({selectedDevice.deviceid})</span>
               <span className={`ml-auto px-2 py-1 rounded-full text-xs ${
                 selectedDevice.status === 'active' 
                   ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200' 

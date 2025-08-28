@@ -128,28 +128,31 @@ const deviceSchema = new mongoose.Schema({
         default: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday']
       },
       timeSlots: [{
-                     startTime: {
-               type: String,
-               default: '00:00',
-               validate: {
-                 validator: function(v) {
-                   return /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(v);
-                 },
-                 message: 'Start time must be in HH:MM format'
-               }
-             },
-                     endTime: {
-               type: String,
-               default: '23:59',
-               validate: {
-                 validator: function(v) {
-                   return /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(v);
-                 },
-                 message: 'End time must be in HH:MM format'
-               }
-             }
+        startTime: {
+          type: String,
+          default: '00:00',
+          validate: {
+            validator: function(v) {
+              return /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(v);
+            },
+            message: 'Start time must be in HH:MM format'
+          }
+        },
+        endTime: {
+          type: String,
+          default: '23:59',
+          validate: {
+            validator: function(v) {
+              return /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(v);
+            },
+            message: 'End time must be in HH:MM format'
+          }
+        }
       }],
-      
+      timezone: {
+        type: String,
+        default: 'UTC'
+      }
     }
   }]
 }, {

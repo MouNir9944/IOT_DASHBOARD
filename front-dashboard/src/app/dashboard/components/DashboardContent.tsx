@@ -277,10 +277,44 @@ export default function DashboardContent() {
       return;
     }
 
-    // Create CSV content
+    // Create CSV content with proper date formatting including year
     const csvContent = [
       ['Date', `${chartType.charAt(0).toUpperCase() + chartType.slice(1)} Value`],
-      ...labels.map((label, index) => [label, data[index]?.toString() || '0'])
+      ...labels.map((label, index) => {
+        // Try to parse the label as a date and format it with year
+        let formattedDate = label;
+        try {
+          // If label looks like a date (contains month/day), try to parse it
+          if (label.includes('/') || label.includes('-') || label.includes(' ')) {
+            const dateObj = new Date(label);
+            if (!isNaN(dateObj.getTime())) {
+              // Check if the parsed year is reasonable (not 2001)
+              const currentYear = new Date().getFullYear();
+              if (dateObj.getFullYear() < 2020 || dateObj.getFullYear() > currentYear + 1) {
+                // If the year seems wrong, try to use current year
+                const correctedDate = new Date(currentYear, dateObj.getMonth(), dateObj.getDate());
+                formattedDate = correctedDate.toLocaleDateString('en-US', {
+                  year: 'numeric',
+                  month: '2-digit',
+                  day: '2-digit'
+                });
+                console.warn('Corrected date year from', dateObj.getFullYear(), 'to', currentYear, 'for label:', label);
+              } else {
+                              formattedDate = dateObj.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                timeZone: 'UTC'
+              });
+              }
+            }
+          }
+        } catch (error) {
+          // If parsing fails, use the original label
+          console.warn('Could not parse date label:', label, error);
+        }
+        return [formattedDate, data[index]?.toString() || '0'];
+      })
     ].map(row => row.join(',')).join('\n');
 
     // Create and download file
@@ -316,13 +350,13 @@ export default function DashboardContent() {
 
     // Time period selector component
   const TimePeriodSelector = () => (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4">
-      <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-3 sm:p-4 mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
         <div className="flex items-center gap-2">
-          <CalendarIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Time Period:</span>
+          <CalendarIcon className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 dark:text-gray-400" />
+          <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Time Period:</span>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5 sm:gap-2">
           {timePeriods.map((period) => (
             <button
               key={period.value}
@@ -334,7 +368,7 @@ export default function DashboardContent() {
                   setDraftCustomTo(customTo ? new Date(customTo) : null);
                 }
               }}
-              className={`px-3 py-1 text-sm rounded-md transition-colors ${
+              className={`px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
                 selectedPeriod === period.value
                   ? 'bg-blue-500 text-white'
                   : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
@@ -346,28 +380,30 @@ export default function DashboardContent() {
         </div>
         {selectedPeriod === 'custom' && (
           <LocalizationProvider dateAdapter={AdapterDateFns}>
-            <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0">
-              <DateTimePicker
-                label="From"
-                value={draftCustomFrom}
-                onChange={(date: Date | null) => setDraftCustomFrom(date)}
-                slotProps={{
-                  textField: { size: "small" }
-                }}
-                format="yyyy-MM-dd HH:mm"
-              />
-              <span className="text-gray-500 dark:text-gray-400">to</span>
-              <DateTimePicker
-                label="To"
-                value={draftCustomTo}
-                onChange={(date: Date | null) => setDraftCustomTo(date)}
-                slotProps={{
-                  textField: { size: "small" }
-                }}
-                format="yyyy-MM-dd HH:mm"
-              />
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+              <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                <DateTimePicker
+                  label="From"
+                  value={draftCustomFrom}
+                  onChange={(date: Date | null) => setDraftCustomFrom(date)}
+                  slotProps={{
+                    textField: { size: "small" }
+                  }}
+                  format="yyyy-MM-dd HH:mm"
+                />
+                <span className="text-gray-500 dark:text-gray-400 text-center sm:hidden">to</span>
+                <DateTimePicker
+                  label="To"
+                  value={draftCustomTo}
+                  onChange={(date: Date | null) => setDraftCustomTo(date)}
+                  slotProps={{
+                    textField: { size: "small" }
+                  }}
+                  format="yyyy-MM-dd HH:mm"
+                />
+              </div>
               <button
-                className={`ml-2 px-3 py-1 text-sm rounded-md bg-blue-500 text-white disabled:bg-gray-300 disabled:text-gray-500`}
+                className={`px-3 py-1.5 text-xs sm:text-sm rounded-md bg-blue-500 text-white disabled:bg-gray-300 disabled:text-gray-500 w-full sm:w-auto`}
                 disabled={
                   !draftCustomFrom || !draftCustomTo ||
                   (customFrom === (draftCustomFrom ? draftCustomFrom.toISOString() : '') &&
@@ -665,7 +701,7 @@ export default function DashboardContent() {
     };
 
     return (
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mt-4">
         {/* Total Consumption */}
         <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-3">
           <div className="flex items-center">
@@ -730,7 +766,7 @@ export default function DashboardContent() {
       <TimePeriodSelector />
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
         {/* Energy Stats - Only show if it has data */}
         {hasData(energyData) && (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
@@ -847,9 +883,9 @@ export default function DashboardContent() {
         if (chartsWithData === 1) {
           gridClasses = 'grid grid-cols-1'; // Single chart takes full width
         } else if (chartsWithData === 2) {
-          gridClasses = 'grid grid-cols-1 lg:grid-cols-2'; // Two charts side by side on large screens
+          gridClasses = 'grid grid-cols-1 md:grid-cols-2'; // Two charts side by side on medium+ screens
         } else if (chartsWithData === 3) {
-          gridClasses = 'grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3'; // Three charts responsive
+          gridClasses = 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3'; // Three charts responsive
         } else {
           gridClasses = 'grid grid-cols-1'; // Default case
         }
@@ -864,11 +900,11 @@ export default function DashboardContent() {
                   onClick={() => exportChartData(energyData.slice(0, energyMinLen), energyLabels.slice(0, energyMinLen), 'energy')}
                   disabled={!hasData(energyData)}
                 />
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">Energy Consumption (kWh)</h3>
+                <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">Energy Consumption (kWh)</h3>
                 <BarChart
                   xAxis={[{ data: energyLabels.slice(0, energyMinLen) }]}
                   series={[{ data: energyData.slice(0, energyMinLen), label: 'Energy', color: '#3B82F6' }]}
-                  height={chartsWithData === 1 ? 400 : 300} // Taller chart when it's the only one
+                  height={chartsWithData === 1 ? 350 : 250} // Responsive height for mobile
                 />
                 <StatisticsCards data={energyData} type="energy" unit="kWh" />
               </div>
@@ -882,11 +918,11 @@ export default function DashboardContent() {
                   onClick={() => exportChartData(waterData.slice(0, waterMinLen), waterLabels.slice(0, waterMinLen), 'water')}
                   disabled={!hasData(waterData)}
                 />
-                <h3 className="text-base sm:text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">{t('devices.water')} {t('analytics.consumption')} (m³)</h3>
+                <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">{t('devices.water')} {t('analytics.consumption')} (m³)</h3>
                 <BarChart
                   xAxis={[{ data: waterLabels.slice(0, waterMinLen) }]}
                   series={[{ data: waterData.slice(0, waterMinLen), label: 'Water', color: '#9333EA' }]}
-                  height={chartsWithData === 1 ? 400 : 300} // Taller chart when it's the only one
+                  height={chartsWithData === 1 ? 350 : 250} // Responsive height for mobile
                 />
                 <StatisticsCards data={waterData} type="water" unit="m³" />
               </div>
@@ -900,11 +936,11 @@ export default function DashboardContent() {
                   onClick={() => exportChartData(gasData.slice(0, gasMinLen), gasLabels.slice(0, gasMinLen), 'gas')}
                   disabled={!hasData(gasData)}
                 />
-                <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">{t('devices.gas')} {t('analytics.consumption')} (m³)</h3>
+                <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 sm:mb-4">{t('devices.gas')} {t('analytics.consumption')} (m³)</h3>
                 <BarChart
                   xAxis={[{ data: gasLabels.slice(0, gasMinLen) }]}
                   series={[{ data: gasData.slice(0, gasMinLen), label: 'Gas', color: '#EF4444' }]}
-                  height={chartsWithData === 1 ? 400 : 300} // Taller chart when it's one
+                  height={chartsWithData === 1 ? 350 : 250} // Responsive height for mobile
                 />
                 <StatisticsCards data={gasData} type="gas" unit="m³" />
               </div>
@@ -926,7 +962,7 @@ export default function DashboardContent() {
 
       {/* Map */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow">
-        <div className="h-64 sm:h-80 md:h-96">
+        <div className="h-48 sm:h-64 md:h-80 lg:h-96">
           <MapWrapper sites={sites} />
         </div>
       </div>

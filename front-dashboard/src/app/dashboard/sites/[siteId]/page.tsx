@@ -127,6 +127,9 @@ export default function SiteDetailPage() {
   const exportChartToCSV = (chartType: string, data: number[], labels: string[]) => {
     const { from, to } = getDateRange();
     const granularity = getGranularity();
+    const startDate = new Date(from);
+    
+    console.log('🔍 Site export debug - Date range:', { from, to, startDate: startDate.toISOString(), granularity });
     
     // Prepare CSV data
     const csvData = [];
@@ -154,18 +157,37 @@ export default function SiteDetailPage() {
     }
     csvData.push(header);
     
-    // Add data rows (only include rows with actual data)
+    // Add data rows (include all days, even with zero values)
     for (let i = 0; i < labels.length; i++) {
-      const date = labels[i];
       const value = data[i] || 0;
       
-      // Only add row if value is non-zero
-      if (value > 0) {
-        csvData.push([
-          date ? new Date(date).toISOString().slice(0, 10) : '',
-          value.toFixed(3)
-        ]);
+      // Reconstruct the actual date by calculating from start date and index
+      let actualDate = new Date(startDate);
+      
+      // Calculate the actual date based on granularity and index
+      switch (granularity) {
+        case 'day':
+          actualDate = new Date(startDate.getTime() + (i * 24 * 60 * 60 * 1000));
+          break;
+        case 'week':
+          actualDate = new Date(startDate.getTime() + (i * 7 * 24 * 60 * 60 * 1000));
+          break;
+        case 'month':
+          actualDate = new Date(startDate.getFullYear(), startDate.getMonth() + i, startDate.getDate());
+          break;
+        default:
+          actualDate = new Date(startDate.getTime() + (i * 24 * 60 * 60 * 1000));
       }
+      
+      csvData.push([
+        actualDate.toLocaleDateString('en-US', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          timeZone: 'UTC'
+        }),
+        value.toFixed(3)
+      ]);
     }
     
     // Convert to CSV string
@@ -472,14 +494,14 @@ export default function SiteDetailPage() {
 
   // Time period selector component
   const TimePeriodSelector = () => (
-    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 mb-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4">
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-3 sm:p-4 mb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
         <div className="flex items-center gap-2">
-          <CalendarIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.period')}:</span>
+          <CalendarIcon className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 dark:text-gray-400" />
+          <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.period')}:</span>
         </div>
-        <div className="flex flex-1 items-center">
-          <div className="flex flex-wrap gap-2 items-center">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 w-full sm:w-auto">
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
             {timePeriods.map((period) => (
               <button
                 key={period.value}
@@ -487,7 +509,7 @@ export default function SiteDetailPage() {
                   setSelectedPeriod(period.value);
                   setShowCustomPicker(period.value === 'custom');
                 }}
-                className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                className={`px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
                   selectedPeriod === period.value
                     ? 'bg-blue-500 text-white'
                     : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
@@ -497,30 +519,32 @@ export default function SiteDetailPage() {
               </button>
             ))}
           </div>
-          <div className="flex-1" />
           <button
             onClick={() => router.push(`/dashboard/sites/${siteId}/analytics`)}
-            className="px-3 py-1 text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors ml-4"
+            className="px-3 py-1.5 text-xs sm:text-sm rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors w-full sm:w-auto"
           >
             {t('sites.siteAnalytics')}
           </button>
-
         </div>
         {showCustomPicker && (
           <LocalizationProvider dateAdapter={AdapterDateFns}>
-            <DateTimePicker
-              label={t('common.from')}
-              value={customFrom}
-              onChange={setCustomFrom}
-              slotProps={{ textField: { size: 'small' } }}
-            />
-            <span className="text-gray-500 dark:text-gray-400">{t('common.to')}</span>
-            <DateTimePicker
-              label={t('common.to')}
-              value={customTo}
-              onChange={setCustomTo}
-              slotProps={{ textField: { size: 'small' } }}
-            />
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
+              <DateTimePicker
+                label={t('common.from')}
+                value={customFrom}
+                onChange={setCustomFrom}
+                slotProps={{ textField: { size: 'small' } }}
+                className="w-full sm:w-40"
+              />
+              <span className="text-gray-500 dark:text-gray-400 text-center sm:hidden">{t('common.to')}</span>
+              <DateTimePicker
+                label={t('common.to')}
+                value={customTo}
+                onChange={setCustomTo}
+                slotProps={{ textField: { size: 'small' } }}
+                className="w-full sm:w-40"
+              />
+            </div>
           </LocalizationProvider>
         )}
       </div>
@@ -671,7 +695,7 @@ export default function SiteDetailPage() {
         {user.role !== 'technicien' && <TimePeriodSelector />}
         {/* Stats Cards */}
         {user.role !== 'technicien' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 md:gap-6">
             {/* Energy Stats - Only show if it has data */}
             {hasData(energyData) && (
               <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
@@ -821,11 +845,11 @@ export default function SiteDetailPage() {
           if (chartsWithData === 1) {
             gridClasses = 'grid grid-cols-1'; // Single chart takes full width
           } else if (chartsWithData === 2) {
-            gridClasses = 'grid grid-cols-1 lg:grid-cols-2'; // Two charts side by side on large screens
+            gridClasses = 'grid grid-cols-1 md:grid-cols-2'; // Two charts side by side on medium+ screens
           } else if (chartsWithData === 3) {
-            gridClasses = 'grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3'; // Three charts responsive
+            gridClasses = 'grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3'; // Three charts responsive
           } else if (chartsWithData === 4) {
-            gridClasses = 'grid grid-cols-1 lg:grid-cols-2'; // Four charts in a 2x2 grid
+            gridClasses = 'grid grid-cols-1 md:grid-cols-2'; // Four charts in a 2x2 grid
           } else {
             gridClasses = 'grid grid-cols-1'; // Default case
           }
@@ -866,7 +890,7 @@ export default function SiteDetailPage() {
                           <h5 className="text-sm font-semibold text-gray-900 dark:text-gray-100">{t('analytics.chartAnalytics')}</h5>
                           <div className="text-xs text-gray-500 dark:text-gray-400">{energyStats.dataPoints} {t('analytics.dataPoints')}</div>
                         </div>
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                           <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ArrowTrendingUpIcon className="w-4 h-4 text-green-500" />
@@ -943,7 +967,7 @@ export default function SiteDetailPage() {
                           <h5 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Chart Analytics</h5>
                           <div className="text-xs text-gray-500 dark:text-gray-400">{solarStats.dataPoints} data points</div>
                         </div>
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                           <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ArrowTrendingUpIcon className="w-4 h-4 text-green-500" />
@@ -1020,7 +1044,7 @@ export default function SiteDetailPage() {
                           <h5 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Chart Analytics</h5>
                           <div className="text-xs text-gray-500 dark:text-gray-400">{waterStats.dataPoints} data points</div>
                         </div>
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                           <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ArrowTrendingUpIcon className="w-4 h-4 text-green-500" />
@@ -1097,7 +1121,7 @@ export default function SiteDetailPage() {
                           <h5 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Chart Analytics</h5>
                           <div className="text-xs text-gray-500 dark:text-gray-400">{gasStats.dataPoints} data points</div>
                         </div>
-                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                           <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 rounded-lg p-3">
                             <div className="flex items-center gap-2 mb-1">
                               <ArrowTrendingUpIcon className="w-4 h-4 text-green-500" />
@@ -1155,8 +1179,8 @@ export default function SiteDetailPage() {
         })()}
         {/* Device Modal */}
         {isDeviceModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 dark:bg-opacity-60">
-            <div className="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg w-full max-w-lg relative">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 dark:bg-opacity-60 p-4">
+            <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 md:p-8 rounded-xl shadow-lg w-full max-w-lg relative max-h-[90vh] overflow-y-auto">
               <button
                 className="absolute top-2 right-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-2xl"
                 onClick={() => setIsDeviceModalOpen(false)}

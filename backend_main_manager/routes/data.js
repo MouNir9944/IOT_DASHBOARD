@@ -1264,6 +1264,150 @@ router.use((req, res, next) => {
         await handleDeviceHistoricalData(req, res);
     });
     
+    // New dedicated export endpoint for device data
+    router.get('/site/:siteId/device/:deviceId/export', async (req, res) => {
+        await handleDeviceExport(req, res);
+    });
+    
+    // New dedicated export function for device data
+    async function handleDeviceExport(req, res) {
+        // Prevent multiple responses
+        let responseSent = false;
+        
+        try {
+            console.log('📤 [Device Export] Request params:', req.params);
+            console.log('📤 [Device Export] Request query:', req.query);
+            
+            const { siteId, deviceId } = req.params;
+            const { from, to, limit = 1000000, offset = 0 } = req.query;
+            
+            // Get device info to determine collection name
+            const DeviceModel = mainDB.model('Device');
+            const device = await DeviceModel.findOne({ 
+                deviceId: deviceId,
+                siteId: siteId
+            }).lean();
+            
+            if (!device) {
+                console.error('❌ [Device Export] Device not found:', { siteId, deviceId });
+                if (!responseSent) {
+                    responseSent = true;
+                    return res.status(404).json({ error: 'Device not found' });
+                }
+                return;
+            }
+            
+            console.log('✅ [Device Export] Device found:', { 
+                deviceId: device.deviceId, 
+                type: device.type, 
+                name: device.name 
+            });
+            
+            // Use device type as collection name
+            const collectionName = device.type;
+            const dbName = await getSiteDbName(siteId);
+            console.log('📤 [Device Export] Using database:', dbName, 'collection:', collectionName);
+        
+            const siteConnection = mongoose.createConnection(process.env.MONGO_URI_site1, {
+                dbName,
+                serverSelectionTimeoutMS: 30000
+            });
+        
+            const SensorModel = siteConnection.model(collectionName, new mongoose.Schema({}, { strict: false }), collectionName);
+        
+            // Build query for specific device
+            const query = { deviceId: deviceId };
+            
+            // Add time range filtering if provided
+            if (from || to) {
+                query.timestamp = {};
+                if (from) {
+                    const fromTimestamp = new Date(from).getTime();
+                    query.timestamp.$gte = fromTimestamp;
+                    console.log('📤 [Device Export] From date converted:', from, '->', fromTimestamp);
+                }
+                if (to) {
+                    const toTimestamp = new Date(to).getTime();
+                    query.timestamp.$lte = toTimestamp;
+                    console.log('📤 [Device Export] To date converted:', to, '->', toTimestamp);
+                }
+            }
+            
+            console.log('📤 [Device Export] Query:', JSON.stringify(query, null, 2));
+            
+            // Count total documents for the date range
+            const totalCount = await SensorModel.countDocuments(query);
+            console.log('📤 [Device Export] Total matching documents:', totalCount);
+            
+            // Execute query with proper pagination
+            const exportData = await SensorModel
+                .find(query)
+                .sort({ timestamp: 1 })
+                .skip(parseInt(offset))
+                .limit(parseInt(limit))
+                .lean();
+            
+            console.log('📤 [Device Export] Retrieved documents:', exportData.length);
+            
+            if (exportData.length > 0) {
+                console.log('📤 [Device Export] Sample document:', JSON.stringify(exportData[0], null, 2));
+                console.log('📤 [Device Export] Available fields:', Object.keys(exportData[0]));
+                
+                // Log date range of retrieved data
+                const firstDoc = exportData[0];
+                const lastDoc = exportData[exportData.length - 1];
+                console.log('📤 [Device Export] Data date range:', {
+                    firstTimestamp: firstDoc.timestamp,
+                    firstDate: new Date(firstDoc.timestamp).toISOString(),
+                    lastTimestamp: lastDoc.timestamp,
+                    lastDate: new Date(lastDoc.timestamp).toISOString()
+                });
+            }
+            
+            await siteConnection.close();
+            
+            // Format response for export
+            const exportResponse = {
+                device: {
+                    deviceId: device.deviceId,
+                    name: device.name,
+                    type: device.type,
+                    siteId: device.siteId
+                },
+                query: {
+                    from: from || null,
+                    to: to || null,
+                    limit: parseInt(limit),
+                    offset: parseInt(offset),
+                    totalCount: totalCount,
+                    returnedCount: exportData.length,
+                    hasMore: (parseInt(offset) + exportData.length) < totalCount
+                },
+                data: exportData
+            };
+            
+            console.log('📤 [Device Export] Response summary:', {
+                deviceId: exportResponse.device.deviceId,
+                deviceType: exportResponse.device.type,
+                dataCount: exportResponse.data.length,
+                totalCount: exportResponse.query.totalCount,
+                hasMore: exportResponse.query.hasMore
+            });
+            
+            if (!responseSent) {
+                responseSent = true;
+                res.status(200).json(exportResponse);
+            }
+            
+        } catch (err) {
+            console.error('❌ [Device Export] Error:', err);
+            if (!responseSent) {
+                responseSent = true;
+                res.status(500).json({ error: err.message });
+            }
+        }
+    }
+
     /***************************************************** */
     async function handleGlobalStats(req, res, type, field) {
         // Prevent multiple responses

@@ -472,23 +472,63 @@ export default function DeviceDetailPage() {
             csvData.push([t('common.date'), t('common.time'), `${t('parameters.consumption')} ${t('devices.water')} (${t('units.cubicMeters')})`, t('analytics.totalConsumption')]);
     
     let totalConsumption = 0;
+    
+    // Get the date range to reconstruct proper dates with year
+    const { from, to } = getDateRange();
+    const startDate = new Date(from);
+    const granularity = getGranularity();
+    
+    console.log('🔍 Export debug - Date range:', { from, to, startDate: startDate.toISOString(), granularity });
+    
     for (let i = 0; i < chartLabels.length; i++) {
-      const date = chartLabels[i];
       const value = chartData[i] || 0;
       totalConsumption += value;
       
-      const dateObj = new Date(date);
-      const dateStr = dateObj.toLocaleDateString('en-US', { 
-        year: 'numeric', 
-        month: '2-digit', 
-        day: '2-digit'
-      });
-      const timeStr = getGranularity() === 'hour' ? 
-        dateObj.toLocaleTimeString('en-US', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          hour12: true 
-        }) : '';
+      // Reconstruct the actual date by calculating from start date and index
+      let actualDate = new Date(startDate);
+      
+      // Calculate the actual date based on granularity and index
+      switch (granularity) {
+        case 'day':
+          actualDate = new Date(startDate.getTime() + (i * 24 * 60 * 60 * 1000));
+          break;
+        case 'week':
+          actualDate = new Date(startDate.getTime() + (i * 7 * 24 * 60 * 60 * 1000));
+          break;
+        case 'month':
+          actualDate = new Date(startDate.getFullYear(), startDate.getMonth() + i, startDate.getDate());
+          break;
+        case 'hour':
+          actualDate = new Date(startDate.getTime() + (i * 60 * 60 * 1000));
+          break;
+        default:
+          actualDate = new Date(startDate.getTime() + (i * 24 * 60 * 60 * 1000));
+      }
+      
+              const dateStr = actualDate.toLocaleDateString('en-US', { 
+          year: 'numeric', 
+          month: '2-digit', 
+          day: '2-digit',
+          timeZone: 'UTC'
+        });
+        const timeStr = granularity === 'hour' ? 
+          actualDate.toLocaleTimeString('en-US', { 
+            hour: '2-digit', 
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'UTC'
+          }) : '';
+      
+      // Debug first few dates
+      if (i < 3) {
+        console.log(`🔍 Export debug - Date ${i}:`, { 
+          actualDate: actualDate.toISOString(), 
+          dateStr, 
+          timeStr,
+          granularity,
+          startDate: startDate.toISOString()
+        });
+      }
       
       csvData.push([
         dateStr,
@@ -578,8 +618,9 @@ export default function DeviceDetailPage() {
           offset: offset.toString()
         });
         
-        const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/device/${deviceId}/historical?${queryParams}`;
+        const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/device/${deviceId}/export?${queryParams}`;
         console.log(`📊 Fetching data chunk: offset=${offset}, limit=${CHUNK_SIZE}`);
+        console.log(`📊 API URL: ${url}`);
         
         const response = await fetch(url);
         if (!response.ok) {
@@ -589,14 +630,30 @@ export default function DeviceDetailPage() {
         const chunkData = await response.json();
         const chunk = chunkData.data || [];
         
-        if (chunk.length === 0) {
+        console.log(`📊 API Response for chunk ${Math.floor(offset / CHUNK_SIZE) + 1}:`, {
+          totalCount: chunkData.query?.totalCount,
+          returnedCount: chunkData.query?.returnedCount,
+          hasMore: chunkData.query?.hasMore,
+          chunkLength: chunk.length,
+          firstItem: chunk[0] ? {
+            timestamp: chunk[0].timestamp,
+            date: new Date(chunk[0].timestamp).toISOString()
+          } : null,
+          lastItem: chunk[chunk.length - 1] ? {
+            timestamp: chunk[chunk.length - 1].timestamp,
+            date: new Date(chunk[chunk.length - 1].timestamp).toISOString()
+          } : null
+        });
+        
+        if (chunk.length === 0 || !chunkData.query?.hasMore) {
           hasMoreData = false;
         } else {
           allData = [...allData, ...chunk];
           offset += chunk.length;
           
-          // Update progress
-          const progress = Math.min((offset / (sizeEstimate.dataPoints * 1.2)) * 100, 90); // Estimate progress
+          // Update progress based on actual total count from API
+          const actualTotal = chunkData.query?.totalCount || sizeEstimate.dataPoints;
+          const progress = Math.min((offset / actualTotal) * 100, 90);
           setExportProgress(progress);
           
           // If we've fetched enough data or hit a reasonable limit, stop
@@ -608,6 +665,25 @@ export default function DeviceDetailPage() {
       }
       
       console.log('📊 Total data fetched for export:', allData.length, 'data points');
+      console.log('📊 Date range requested:', {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        expectedPoints: sizeEstimate.dataPoints
+      });
+      
+      // Debug: Check the actual date range of fetched data
+      if (allData.length > 0) {
+        const sortedData = allData.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+        const firstItem = sortedData[0];
+        const lastItem = sortedData[sortedData.length - 1];
+        console.log('📊 Actual data range:', {
+          firstTimestamp: firstItem.timestamp,
+          firstDate: new Date(firstItem.timestamp).toISOString(),
+          lastTimestamp: lastItem.timestamp,
+          lastDate: new Date(lastItem.timestamp).toISOString(),
+          totalItems: allData.length
+        });
+      }
       
       // Debug: Log the structure of the first data item to see available fields
       if (allData.length > 0) {
@@ -621,7 +697,32 @@ export default function DeviceDetailPage() {
           value: allData[0].value,
           totalIndex: allData[0].totalIndex,
           waterConsumption: allData[0].waterConsumption,
-          volume: allData[0].volume
+          volume: allData[0].volume,
+          timestamp: allData[0].timestamp,
+          timestampType: typeof allData[0].timestamp
+        });
+        
+        // Check if data structure is what we expect
+        console.log('🔍 Data structure validation:', {
+          hasTimestamp: 'timestamp' in allData[0],
+          hasFlowRate: 'flowRate' in allData[0],
+          hasPressure: 'pressure' in allData[0],
+          hasTemperature: 'temperature' in allData[0],
+          hasConsumption: 'consumption' in allData[0],
+          hasValue: 'value' in allData[0],
+          timestampType: typeof allData[0].timestamp,
+          timestampValue: allData[0].timestamp
+        });
+        
+        // Debug: Check if timestamp is in the expected format
+        const firstTimestamp = allData[0].timestamp;
+        console.log('🔍 Timestamp analysis:', {
+          original: firstTimestamp,
+          type: typeof firstTimestamp,
+          isString: typeof firstTimestamp === 'string',
+          isNumber: typeof firstTimestamp === 'number',
+          parsedAsDate: new Date(firstTimestamp).toISOString(),
+          isValidDate: !isNaN(new Date(firstTimestamp).getTime())
         });
       }
       
@@ -640,8 +741,21 @@ export default function DeviceDetailPage() {
       // Sort data by timestamp to ensure chronological order
       const sortedData = allData.sort((a: any, b: any) => a.timestamp - b.timestamp);
       
+      // Debug: Log sorting results
+      console.log('🔍 Data sorting debug:', {
+        totalDataPoints: allData.length,
+        sortedDataPoints: sortedData.length,
+        firstTimestamp: sortedData[0]?.timestamp,
+        lastTimestamp: sortedData[sortedData.length - 1]?.timestamp,
+        firstDate: sortedData[0] ? new Date(sortedData[0].timestamp).toISOString() : null,
+        lastDate: sortedData[sortedData.length - 1] ? new Date(sortedData[sortedData.length - 1].timestamp).toISOString() : null
+      });
+      
+      // Create complete timeline with all days, filling missing days with zeros
+      const completeData = createCompleteTimeline(sortedData, startDate, endDate, exportSamplingInterval);
+      
       // Apply sampling to reduce data points based on user selection
-      const sampledData = applyDataSampling(sortedData, exportSamplingInterval);
+      const sampledData = applyDataSampling(completeData, exportSamplingInterval);
       
       console.log('🔍 Data sampling applied:', {
         originalDataPoints: sortedData.length,
@@ -652,6 +766,15 @@ export default function DeviceDetailPage() {
       
       // Debug: Log the first few items to see what fields are available
       console.log('🔍 Sample data items for export:', sampledData.slice(0, 3));
+      console.log('🔍 Data sampling details:', {
+        originalDataLength: sortedData.length,
+        sampledDataLength: sampledData.length,
+        samplingInterval: exportSamplingInterval,
+        expectedSampledLength: Math.ceil(sortedData.length / exportSamplingInterval)
+      });
+      
+      let processedItems = 0;
+      let skippedItems = 0;
       
       for (let i = 0; i < sampledData.length; i++) {
         const item = sampledData[i];
@@ -661,30 +784,123 @@ export default function DeviceDetailPage() {
         
         // Try different possible consumption field names from the database
         let consumption = 0;
+        let consumptionField = '';
+        
         if (item.consumption !== undefined && item.consumption !== null) {
           consumption = item.consumption;
+          consumptionField = 'consumption';
         } else if (item.value !== undefined && item.value !== null) {
           consumption = item.value;
+          consumptionField = 'value';
         } else if (item.totalIndex !== undefined && item.totalIndex !== null) {
           consumption = item.totalIndex;
+          consumptionField = 'totalIndex';
         } else if (item.waterConsumption !== undefined && item.waterConsumption !== null) {
           consumption = item.waterConsumption;
+          consumptionField = 'waterConsumption';
         } else if (item.volume !== undefined && item.volume !== null) {
           consumption = item.volume;
+          consumptionField = 'volume';
         }
         
-        const timestamp = new Date(item.timestamp);
+        // Debug: Log consumption data for first few items
+        if (i < 3) {
+          console.log(`🔍 Consumption data for item ${i}:`, {
+            consumption,
+            field: consumptionField,
+            allFields: {
+              consumption: item.consumption,
+              value: item.value,
+              totalIndex: item.totalIndex,
+              waterConsumption: item.waterConsumption,
+              volume: item.volume
+            },
+            otherFields: {
+              flowRate: item.flowRate,
+              pressure: item.pressure,
+              temperature: item.temperature,
+              timestamp: item.timestamp
+            },
+            rawItem: item
+          });
+        }
+        
+        let timestamp: Date;
+        
+        // Debug: Log the original timestamp for first few items
+        if (i < 3) {
+          console.log(`🔍 Original timestamp for item ${i}:`, {
+            value: item.timestamp,
+            type: typeof item.timestamp,
+            stringified: JSON.stringify(item.timestamp)
+          });
+        }
+        
+        // Handle different timestamp formats more carefully
+        if (typeof item.timestamp === 'number') {
+          // Check if it's already in milliseconds or seconds
+          if (item.timestamp > 1000000000000) {
+            // Already in milliseconds
+            timestamp = new Date(item.timestamp);
+          } else {
+            // Assume it's in seconds, convert to milliseconds
+            timestamp = new Date(item.timestamp * 1000);
+          }
+        } else if (typeof item.timestamp === 'string') {
+          // Try to parse the string
+          timestamp = new Date(item.timestamp);
+        } else if (item.timestamp instanceof Date) {
+          // Already a Date object
+          timestamp = item.timestamp;
+        } else {
+          // Try to convert to date
+          timestamp = new Date(item.timestamp);
+        }
+        
+        // Validate timestamp
+        if (isNaN(timestamp.getTime())) {
+          console.warn(`⚠️ Invalid timestamp for item ${i}:`, item.timestamp);
+          skippedItems++;
+          continue;
+        }
+        
+        // Check if the year is reasonable (not 1970, 2001, or 57564)
+        const currentYear = new Date().getFullYear();
+        const year = timestamp.getFullYear();
+        if (year < 2020 || year > currentYear + 1) {
+          console.warn(`⚠️ Unreasonable year ${year} for item ${i}, skipping this item:`, {
+            originalTimestamp: item.timestamp,
+            parsedYear: year,
+            currentYear: currentYear
+          });
+          skippedItems++;
+          continue; // Skip this item instead of processing it
+        }
+        
+        // Debug: Log timestamp processing for first few items
+        if (i < 3) {
+          console.log(`🔍 Export timestamp debug - Item ${i}:`, {
+            originalTimestamp: item.timestamp,
+            parsedTimestamp: timestamp.toISOString(),
+            isValidDate: !isNaN(timestamp.getTime()),
+            year: timestamp.getFullYear(),
+            month: timestamp.getMonth() + 1,
+            day: timestamp.getDate()
+          });
+        }
         
         const dateStr = timestamp.toLocaleDateString('en-US', {
           year: 'numeric',
           month: '2-digit',
-          day: '2-digit'
+          day: '2-digit',
+          timeZone: 'UTC'
         });
         const timeStr = timestamp.toLocaleTimeString('en-US', {
           hour: '2-digit',
           minute: '2-digit',
           second: '2-digit',
-          hour12: true
+          hour12: true,
+          timeZone: 'UTC'
         });
         
         csvData.push([
@@ -695,10 +911,25 @@ export default function DeviceDetailPage() {
           temperature.toFixed(1),
           consumption.toFixed(6)
         ]);
+        
+        processedItems++;
       }
       
       // Debug: Log the consumption values being exported
       console.log('🔍 Consumption values in export:', csvData.slice(1, 4).map(row => row[5]));
+      console.log('🔍 Sample CSV rows:', csvData.slice(1, 4));
+      console.log('🔍 CSV header:', csvData[0]);
+      console.log('🔍 Total CSV rows:', csvData.length);
+      console.log('🔍 First 10 consumption values:', csvData.slice(1, 11).map(row => row[5]));
+      
+      // Summary of processing
+      console.log('📊 Export processing summary:', {
+        totalItems: sampledData.length,
+        processedItems,
+        skippedItems,
+        exportedRows: csvData.length - 1, // Exclude header
+        expectedPoints: sizeEstimate.dataPoints
+      });
       
       // Generate filename with time range and sampling interval
       const startDateStr = startDate.toISOString().split('T')[0];
@@ -1266,41 +1497,114 @@ export default function DeviceDetailPage() {
     setExportTo(now);
   };
 
-  // Helper function to apply data sampling based on user-selected interval
-  const applyDataSampling = (data: any[], samplingIntervalMinutes: number) => {
-    if (samplingIntervalMinutes <= 1 || data.length <= 1) {
-      return data; // No sampling needed
-    }
+  // Helper function to generate all days in a range for chart export
+  const generateAllDaysInRange = (startDate: Date, endDate: Date, granularity: string) => {
+    const allDays: any[] = [];
+    let currentDate = new Date(startDate);
     
-    const sampledData: any[] = [];
-    const intervalMs = samplingIntervalMinutes * 60 * 1000; // Convert to milliseconds
-    
-    // Always include the first data point
-    sampledData.push(data[0]);
-    
-    for (let i = 1; i < data.length; i++) {
-      const currentTimestamp = new Date(data[i].timestamp).getTime();
-      const lastSampledTimestamp = new Date(sampledData[sampledData.length - 1].timestamp).getTime();
+    while (currentDate <= endDate) {
+      allDays.push({
+        date: new Date(currentDate),
+        value: 0 // Will be filled with actual data if available
+      });
       
-      // Check if enough time has passed to include this data point
-      if (currentTimestamp - lastSampledTimestamp >= intervalMs) {
-        sampledData.push(data[i]);
+      // Move to next period based on granularity
+      switch (granularity) {
+        case 'day':
+          currentDate.setDate(currentDate.getDate() + 1);
+          break;
+        case 'week':
+          currentDate.setDate(currentDate.getDate() + 7);
+          break;
+        case 'month':
+          currentDate.setMonth(currentDate.getMonth() + 1);
+          break;
+        case 'hour':
+          currentDate.setHours(currentDate.getHours() + 1);
+          break;
+        default:
+          currentDate.setDate(currentDate.getDate() + 1);
       }
     }
     
-    // Always include the last data point if it's not already included
-    if (sampledData.length > 0 && sampledData[sampledData.length - 1] !== data[data.length - 1]) {
-      sampledData.push(data[data.length - 1]);
-    }
+    return allDays;
+  };
+
+  // Helper function to create complete timeline with all days, filling missing days with zeros
+  const createCompleteTimeline = (data: any[], startDate: Date, endDate: Date, samplingIntervalMinutes: number) => {
+    const completeData: any[] = [];
+    const intervalMs = samplingIntervalMinutes * 60 * 1000; // Convert to milliseconds
     
-    console.log('🔍 Data sampling applied:', {
-      originalPoints: data.length,
-      sampledPoints: sampledData.length,
-      interval: samplingIntervalMinutes,
-      reduction: ((1 - sampledData.length / data.length) * 100).toFixed(1) + '%'
+    // Create a map of existing data by rounded timestamp for quick lookup
+    const dataMap = new Map();
+    data.forEach(item => {
+      const timestamp = new Date(item.timestamp).getTime();
+      // Round to the nearest interval to match with generated timestamps
+      const roundedTimestamp = Math.round(timestamp / intervalMs) * intervalMs;
+      dataMap.set(roundedTimestamp, item);
     });
     
-    return sampledData;
+    // Generate all time intervals in the range
+    let currentTime = startDate.getTime();
+    const endTime = endDate.getTime();
+    
+    while (currentTime <= endTime) {
+      // Round current time to the nearest interval
+      const roundedTime = Math.round(currentTime / intervalMs) * intervalMs;
+      
+      // Check if we have data for this timestamp
+      if (dataMap.has(roundedTime)) {
+        // Use existing data
+        completeData.push(dataMap.get(roundedTime));
+      } else {
+        // Create zero data entry for missing timestamp
+        completeData.push({
+          timestamp: currentTime,
+          flowRate: 0,
+          pressure: 0,
+          temperature: 0,
+          consumption: 0,
+          value: 0,
+          totalIndex: 0,
+          waterConsumption: 0,
+          volume: 0
+        });
+      }
+      
+      // Move to next interval
+      currentTime += intervalMs;
+    }
+    
+    console.log('🔍 Created complete timeline:', {
+      originalDataPoints: data.length,
+      completeDataPoints: completeData.length,
+      dateRange: {
+        start: startDate.toISOString(),
+        end: endDate.toISOString()
+      },
+      samplingInterval: samplingIntervalMinutes,
+      intervalMs: intervalMs
+    });
+    
+    return completeData;
+  };
+
+  // Helper function to apply data sampling based on user-selected interval
+  const applyDataSampling = (data: any[], samplingIntervalMinutes: number) => {
+    // Since we already created a complete timeline with the correct intervals,
+    // we don't need to do additional sampling - just return the data as-is
+    if (samplingIntervalMinutes <= 1) {
+      return data; // No sampling needed
+    }
+    
+    console.log('🔍 Data sampling applied (complete timeline):', {
+      originalPoints: data.length,
+      sampledPoints: data.length,
+      interval: samplingIntervalMinutes,
+      note: 'Complete timeline already created with correct intervals'
+    });
+    
+    return data;
   };
 
   // Helper function to estimate data size and warn about large exports

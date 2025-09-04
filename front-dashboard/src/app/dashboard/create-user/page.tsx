@@ -308,292 +308,346 @@ export default function CreateUserPage() {
 
   return (
     <DashboardLayout user={user}>
-      <div className="p-3 sm:p-6 bg-gray-50 dark:bg-gray-900">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">User Management</h1>
-          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">Create and manage users in your system</p>
-        </div>
-        
-        <div className="flex justify-center mb-6">
-          <button
-            className="bg-blue-600 dark:bg-blue-500 text-white py-2 px-4 rounded font-semibold hover:bg-blue-700 dark:hover:bg-blue-600 transition w-full max-w-xs sm:max-w-md"
-            onClick={openCreateModal}
-          >
-            {t('users.createUser')}
-          </button>
-        </div>
-      {/* Modal for Create/Edit User */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 dark:bg-opacity-60 p-2 sm:p-4">
-          <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 lg:p-8 rounded-xl shadow-lg w-full max-w-sm sm:max-w-lg lg:max-w-xl relative max-h-[90vh] overflow-y-auto">
-            <button
-              className="absolute top-2 right-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-2xl z-10"
-              onClick={() => setIsModalOpen(false)}
-            >
-              &times;
-            </button>
-            <h2 className="text-lg sm:text-xl lg:text-2xl font-bold mb-4 sm:mb-6 text-blue-700 dark:text-blue-400 pr-8">{modalMode === 'edit' ? t('users.editUser') : t('users.createUser')}</h2>
-            <form className="flex flex-col gap-3 sm:gap-4" onSubmit={handleSubmit}>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-7xl mx-auto p-3 sm:p-4 md:p-6 lg:p-8">
+          {/* Header */}
+          <div className="mb-4 sm:mb-6 lg:mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
-                <label className="block text-sm sm:text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.name')}</label>
-                <input
-                  className="w-full border border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-sm sm:text-base rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                  type="text"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  required
-                />
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">User Management</h1>
+                <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">Create and manage users in your system</p>
               </div>
-              <div>
-                <label className="block text-sm sm:text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.email')}</label>
-                <input
-                  className="w-full border border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-sm sm:text-base rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                  type="email"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm sm:text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('profile.changePassword')}</label>
-                <input
-                  className="w-full border border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-sm sm:text-base rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                  type="password"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                  required={modalMode === 'create'}
-                />
-              </div>
-              <div>
-                <label className="block text-sm sm:text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.role')}</label>
-                <select
-                  className="w-full border border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-sm sm:text-base rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                  value={role}
-                  onChange={e => setRole(e.target.value)}
-                  required
+              <div className="flex justify-center sm:justify-end">
+                <button
+                  className="bg-blue-600 dark:bg-blue-500 text-white py-2 sm:py-3 px-4 sm:px-6 rounded-lg font-semibold hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors w-full sm:w-auto min-w-[140px] shadow-md hover:shadow-lg"
+                  onClick={openCreateModal}
                 >
-                  {session.user.role === 'superadmin' && (
-                    <option value="superadmin">Superadmin - Full system access</option>
-                  )}
-                  {session.user.role === 'superadmin' && (
-                    <option value="admin">Admin - Site management access</option>
-                  )}
-                  {(session.user.role === 'superadmin' || session.user.role === 'admin') && (
-                    <option value="sous admin">Sous Admin - Limited admin access</option>
-                  )}
-                  {(session.user.role === 'superadmin' || session.user.role === 'admin' || session.user.role === 'sous admin') && (
-                    <option value="technicien">Technicien - Device installation access</option>
-                  )}
-                  {(session.user.role === 'superadmin' || session.user.role === 'admin' || session.user.role === 'sous admin') && (
-                    <option value="user">User - Basic site access</option>
-                  )}
-                </select>
-                <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
-                  {role === 'user' && 'Users can only be assigned to one site'}
-                  {role === 'technicien' && 'Techniciens require at least one assigned site'}
-                  {role === 'sous admin' && 'Sous Admins can manage multiple sites and create techniciens and users'}
-                  {role === 'admin' && 'Admins can manage multiple sites and create sous admins, techniciens, and users (but not other admins)'}
-                  {role === 'superadmin' && 'Superadmins have access to all sites and can create all roles'}
-                </div>
+                  <span className="hidden sm:inline">{t('users.createUser')}</span>
+                  <span className="sm:hidden">Create User</span>
+                </button>
               </div>
-              <div>
-                <label className="block text-sm sm:text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">
-                  Assign Sites {sites.length > 0 && <span className="text-green-600 dark:text-green-400">({sites.length} selected)</span>}
-                </label>
-                <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-2">
-                  {session.user.role === 'superadmin' 
-                    ? 'Superadmin can assign any site to users'
-                    : session.user.role === 'admin'
-                    ? 'Admin can assign their accessible sites to users'
-                    : session.user.role === 'sous admin'
-                    ? 'Sous Admin can assign their accessible sites to users'
-                    : role === 'user'
-                    ? 'Users can only be assigned to one site'
-                    : 'Select sites to assign to this user'
-                  }
-                </div>
-                {role === 'user' ? (
-                  <select
-                    className="w-full border border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-sm sm:text-base rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
-                    value={sites[0] || ''}
-                    onChange={e => {
-                      setSites(e.target.value ? [e.target.value] : []);
-                    }}
-                    required
-                  >
-                    <option value="">Select a site</option>
-                    {allSites.map(site => (
-                      <option key={site._id} value={site._id}>
-                        {site.name} ({site.type || 'unknown type'})
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <select
-                    className="w-full border border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-sm sm:text-base rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 min-h-[100px] sm:min-h-[120px]"
-                    multiple
-                    value={sites}
-                    onChange={e => {
-                      const selected = Array.from(e.target.selectedOptions, option => option.value);
-                      setSites(selected);
-                    }}
-                    required={role === 'technicien'}
-                  >
-                    {allSites.length === 0 ? (
-                      <option disabled>No sites available</option>
-                    ) : (
-                      allSites.map(site => (
-                        <option key={site._id} value={site._id}>
-                          {site.name} ({site.type || 'unknown type'})
-                        </option>
-                      ))
-                    )}
-                  </select>
-                )}
-                {role !== 'user' && (
-                  <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
-                    Hold Ctrl (or Cmd on Mac) to select multiple sites
-                  </div>
-                )}
-                {sites.length > 0 && (
-                  <div className="mt-2">
-                    <div className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Selected Sites:</div>
-                    <div className="flex flex-wrap gap-1">
-                      {sites.map(siteId => {
-                        const site = allSites.find(s => s._id === siteId);
-                        return site ? (
-                          <span 
-                            key={siteId}
-                            className="inline-block bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 text-xs px-2 py-1 rounded"
-                          >
-                            {site.name}
-                          </span>
-                        ) : null;
-                      })}
+            </div>
+          </div>
+          {/* Modal for Create/Edit User */}
+          {isModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 dark:bg-opacity-60 p-2 sm:p-4">
+              <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 lg:p-8 rounded-xl shadow-2xl w-full max-w-sm sm:max-w-lg lg:max-w-2xl xl:max-w-3xl relative max-h-[95vh] overflow-y-auto">
+                <button
+                  className="absolute top-2 right-2 sm:top-4 sm:right-4 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-xl sm:text-2xl z-10 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors"
+                  onClick={() => setIsModalOpen(false)}
+                >
+                  &times;
+                </button>
+                <h2 className="text-lg sm:text-xl lg:text-2xl font-bold mb-4 sm:mb-6 text-blue-700 dark:text-blue-400 pr-8">{modalMode === 'edit' ? t('users.editUser') : t('users.createUser')}</h2>
+                <form className="flex flex-col gap-4 sm:gap-5 lg:gap-6" onSubmit={handleSubmit}>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-5">
+                    <div>
+                      <label className="block text-sm sm:text-base font-semibold mb-2 text-gray-900 dark:text-gray-100">{t('common.name')}</label>
+                      <input
+                        className="w-full border border-gray-300 dark:border-gray-600 p-3 sm:p-4 text-sm sm:text-base rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 transition-colors"
+                        type="text"
+                        value={name}
+                        onChange={e => setName(e.target.value)}
+                        required
+                        placeholder="Enter full name"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm sm:text-base font-semibold mb-2 text-gray-900 dark:text-gray-100">{t('common.email')}</label>
+                      <input
+                        className="w-full border border-gray-300 dark:border-gray-600 p-3 sm:p-4 text-sm sm:text-base rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 transition-colors"
+                        type="email"
+                        value={email}
+                        onChange={e => setEmail(e.target.value)}
+                        required
+                        placeholder="Enter email address"
+                      />
                     </div>
                   </div>
+                  <div>
+                    <label className="block text-sm sm:text-base font-semibold mb-2 text-gray-900 dark:text-gray-100">{t('profile.changePassword')}</label>
+                    <input
+                      className="w-full border border-gray-300 dark:border-gray-600 p-3 sm:p-4 text-sm sm:text-base rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 transition-colors"
+                      type="password"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      required={modalMode === 'create'}
+                      placeholder={modalMode === 'create' ? 'Enter password' : 'Leave blank to keep current password'}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm sm:text-base font-semibold mb-2 text-gray-900 dark:text-gray-100">{t('common.role')}</label>
+                    <select
+                      className="w-full border border-gray-300 dark:border-gray-600 p-3 sm:p-4 text-sm sm:text-base rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 transition-colors"
+                      value={role}
+                      onChange={e => setRole(e.target.value)}
+                      required
+                    >
+                      {session.user.role === 'superadmin' && (
+                        <option value="superadmin">Superadmin - Full system access</option>
+                      )}
+                      {session.user.role === 'superadmin' && (
+                        <option value="admin">Admin - Site management access</option>
+                      )}
+                      {(session.user.role === 'superadmin' || session.user.role === 'admin') && (
+                        <option value="sous admin">Sous Admin - Limited admin access</option>
+                      )}
+                      {(session.user.role === 'superadmin' || session.user.role === 'admin' || session.user.role === 'sous admin') && (
+                        <option value="technicien">Technicien - Device installation access</option>
+                      )}
+                      {(session.user.role === 'superadmin' || session.user.role === 'admin' || session.user.role === 'sous admin') && (
+                        <option value="user">User - Basic site access</option>
+                      )}
+                    </select>
+                    <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-2 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                      {role === 'user' && 'Users can only be assigned to one site'}
+                      {role === 'technicien' && 'Techniciens require at least one assigned site'}
+                      {role === 'sous admin' && 'Sous Admins can manage multiple sites and create techniciens and users'}
+                      {role === 'admin' && 'Admins can manage multiple sites and create sous admins, techniciens, and users (but not other admins)'}
+                      {role === 'superadmin' && 'Superadmins have access to all sites and can create all roles'}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-sm sm:text-base font-semibold mb-2 text-gray-900 dark:text-gray-100">
+                      Assign Sites {sites.length > 0 && <span className="text-green-600 dark:text-green-400">({sites.length} selected)</span>}
+                    </label>
+                    <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-3 p-2 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                      {session.user.role === 'superadmin' 
+                        ? 'Superadmin can assign any site to users'
+                        : session.user.role === 'admin'
+                        ? 'Admin can assign their accessible sites to users'
+                        : session.user.role === 'sous admin'
+                        ? 'Sous Admin can assign their accessible sites to users'
+                        : role === 'user'
+                        ? 'Users can only be assigned to one site'
+                        : 'Select sites to assign to this user'
+                      }
+                    </div>
+                    {role === 'user' ? (
+                      <select
+                        className="w-full border border-gray-300 dark:border-gray-600 p-3 sm:p-4 text-sm sm:text-base rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 transition-colors"
+                        value={sites[0] || ''}
+                        onChange={e => {
+                          setSites(e.target.value ? [e.target.value] : []);
+                        }}
+                        required
+                      >
+                        <option value="">Select a site</option>
+                        {allSites.map(site => (
+                          <option key={site._id} value={site._id}>
+                            {site.name} ({site.type || 'unknown type'})
+                          </option>
+                        ))}
+                      </select>
+                    ) : (
+                      <select
+                        className="w-full border border-gray-300 dark:border-gray-600 p-3 sm:p-4 text-sm sm:text-base rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 min-h-[120px] sm:min-h-[140px] transition-colors"
+                        multiple
+                        value={sites}
+                        onChange={e => {
+                          const selected = Array.from(e.target.selectedOptions, option => option.value);
+                          setSites(selected);
+                        }}
+                        required={role === 'technicien'}
+                      >
+                        {allSites.length === 0 ? (
+                          <option disabled>No sites available</option>
+                        ) : (
+                          allSites.map(site => (
+                            <option key={site._id} value={site._id}>
+                              {site.name} ({site.type || 'unknown type'})
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    )}
+                    {role !== 'user' && (
+                      <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                        💡 Hold Ctrl (or Cmd on Mac) to select multiple sites
+                      </div>
+                    )}
+                    {sites.length > 0 && (
+                      <div className="mt-3">
+                        <div className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">Selected Sites:</div>
+                        <div className="flex flex-wrap gap-2">
+                          {sites.map(siteId => {
+                            const site = allSites.find(s => s._id === siteId);
+                            return site ? (
+                              <span 
+                                key={siteId}
+                                className="inline-block bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 text-xs sm:text-sm px-3 py-1 rounded-full border border-blue-200 dark:border-blue-700"
+                              >
+                                {site.name}
+                              </span>
+                            ) : null;
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                    <button
+                      className="flex-1 bg-blue-600 dark:bg-blue-500 text-white py-3 sm:py-4 text-sm sm:text-base rounded-lg font-semibold hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors disabled:opacity-50 shadow-md hover:shadow-lg"
+                      type="submit"
+                      disabled={loading}
+                    >
+                      {loading
+                        ? modalMode === 'edit'
+                          ? 'Updating...'
+                          : 'Creating...'
+                        : modalMode === 'edit'
+                          ? 'Update User'
+                          : 'Create User'}
+                    </button>
+                    {editingUser && (
+                      <button
+                        type="button"
+                        className="flex-1 sm:flex-none sm:min-w-[120px] bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 py-3 sm:py-4 text-sm sm:text-base rounded-lg font-semibold hover:bg-gray-400 dark:hover:bg-gray-500 transition-colors"
+                        onClick={() => {
+                          setEditingUser(null);
+                          setName('');
+                          setEmail('');
+                          setPassword('');
+                          setRole('user');
+                          setSites([]);
+                          setIsModalOpen(false);
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </form>
+                {success && (
+                  <div className="text-sm sm:text-base text-green-600 dark:text-green-400 mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-700">
+                    ✅ {success}
+                  </div>
+                )}
+                {error && (
+                  <div className="text-sm sm:text-base text-red-600 dark:text-red-400 mt-4 p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-700">
+                    ❌ {error}
+                  </div>
                 )}
               </div>
-              <button
-                className="w-full bg-blue-600 dark:bg-blue-500 text-white py-2 sm:py-3 text-sm sm:text-base rounded font-semibold hover:bg-blue-700 dark:hover:bg-blue-600 transition disabled:opacity-50"
-                type="submit"
-                disabled={loading}
-              >
-                {loading
-                  ? modalMode === 'edit'
-                    ? 'Updating...'
-                    : 'Creating...'
-                  : modalMode === 'edit'
-                    ? 'Update User'
-                    : 'Create User'}
-              </button>
-              {editingUser && (
-                <button
-                  type="button"
-                  className="w-full mt-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 py-2 sm:py-3 text-sm sm:text-base rounded font-semibold hover:bg-gray-400 dark:hover:bg-gray-500 transition"
-                  onClick={() => {
-                    setEditingUser(null);
-                    setName('');
-                    setEmail('');
-                    setPassword('');
-                    setRole('user');
-                    setSites([]);
-                    setIsModalOpen(false);
-                  }}
-                >
-                  Cancel Edit
-                </button>
-              )}
-            </form>
-            {success && <div className="text-sm sm:text-base text-green-600 dark:text-green-400 mt-4 p-2 bg-green-50 dark:bg-green-900/20 rounded">{success}</div>}
-            {error && <div className="text-sm sm:text-base text-red-600 dark:text-red-400 mt-4 p-2 bg-red-50 dark:bg-red-900/20 rounded">{error}</div>}
+            </div>
+          )}
+          {/* Error Display */}
+          {error && (
+            <div className="w-full mt-4 bg-red-100 dark:bg-red-900/20 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-300 px-3 sm:px-4 py-2 sm:py-3 rounded-lg text-sm sm:text-base">
+              <strong>Error:</strong> {error}
+            </div>
+          )}
+          
+          {/* Success Display */}
+          {success && (
+            <div className="w-full mt-4 bg-green-100 dark:bg-green-900/20 border border-green-400 dark:border-green-700 text-green-700 dark:text-green-300 px-3 sm:px-4 py-2 sm:py-3 rounded-lg text-sm sm:text-base">
+              <strong>Success:</strong> {success}
+            </div>
+          )}
+          
+          {/* Users Table */}
+          <div className="w-full mt-6 sm:mt-8 bg-white dark:bg-gray-800 p-4 sm:p-6 lg:p-8 rounded-xl shadow-lg">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6">
+              <h2 className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-700 dark:text-blue-400 mb-2 sm:mb-0">Users</h2>
+              <div className="text-sm text-gray-600 dark:text-gray-400">
+                {users.length} user{users.length !== 1 ? 's' : ''} found
+              </div>
+            </div>
+            {users.length === 0 ? (
+              <div className="text-center py-8 sm:py-12">
+                <div className="text-gray-400 dark:text-gray-500 text-4xl sm:text-5xl mb-4">👥</div>
+                <div className="text-sm sm:text-base text-gray-500 dark:text-gray-400 mb-2">No users found</div>
+                <div className="text-xs sm:text-sm text-gray-400 dark:text-gray-500">Create your first user to get started</div>
+              </div>
+            ) : (
+              <div className="relative">
+                {/* Mobile scroll indicator */}
+                <div className="sm:hidden absolute top-2 right-2 z-10 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs px-2 py-1 rounded-full">
+                  ← Swipe to see more →
+                </div>
+                <div className="overflow-x-auto shadow-sm rounded-lg border border-gray-200 dark:border-gray-700 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-gray-600 scrollbar-track-gray-100 dark:scrollbar-track-gray-800">
+                  <div className="min-w-[800px] sm:min-w-full">
+                    <table className="w-full divide-y divide-gray-200 dark:divide-gray-700">
+                  <thead className="bg-gray-50 dark:bg-gray-700">
+                    <tr>
+                      <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">Name</th>
+                      <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[180px]">Email</th>
+                      <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[100px]">Role</th>
+                      <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[150px]">Sites</th>
+                      <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[120px]">Created By</th>
+                      <th className="px-3 sm:px-4 py-3 text-left text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider min-w-[140px]">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                    {users.map((user, idx) => (
+                      <tr key={user._id || idx} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap text-sm sm:text-base font-medium text-gray-900 dark:text-gray-100 min-w-[120px]">
+                          {user.name || '-'}
+                        </td>
+                        <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm sm:text-base text-gray-900 dark:text-gray-100 min-w-[180px]">
+                          <div className="truncate" title={user.email || '-'}>
+                            {user.email || '-'}
+                          </div>
+                        </td>
+                        <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap min-w-[100px]">
+                          <span className={`inline-flex px-2 py-1 text-xs sm:text-sm font-semibold rounded-full ${
+                            user.role === 'superadmin' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-800 dark:text-purple-200' :
+                            user.role === 'admin' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200' :
+                            user.role === 'sous admin' ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-200' :
+                            user.role === 'technicien' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200' :
+                            'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200'
+                          }`}>
+                            {user.role || '-'}
+                          </span>
+                        </td>
+                        <td className="px-3 sm:px-4 py-3 sm:py-4 text-sm sm:text-base text-gray-900 dark:text-gray-100 min-w-[150px]">
+                          <div className="truncate" title={user.sites && user.sites.length > 0
+                            ? user.sites.map((site: any) => typeof site === 'string'
+                                ? (allSites.find(s => s._id === site)?.name || site)
+                                : site.name
+                              ).join(', ')
+                            : 'None'}>
+                            {user.sites && user.sites.length > 0
+                              ? user.sites.map((site: any) => typeof site === 'string'
+                                  ? (allSites.find(s => s._id === site)?.name || site)
+                                  : site.name
+                                ).join(', ')
+                              : 'None'}
+                          </div>
+                        </td>
+                        <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap text-sm sm:text-base text-gray-900 dark:text-gray-100 min-w-[120px]">
+                          {user.createdBy ? (
+                            users.find(u => u._id === user.createdBy)?.name || 'Unknown'
+                          ) : (
+                            'System'
+                          )}
+                        </td>
+                        <td className="px-3 sm:px-4 py-3 sm:py-4 whitespace-nowrap text-sm sm:text-base text-gray-900 dark:text-gray-100 min-w-[140px]">
+                          <div className="flex flex-col sm:flex-row gap-2">
+                            <button
+                              className="inline-flex items-center px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-yellow-700 dark:text-yellow-200 bg-yellow-100 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-md hover:bg-yellow-200 dark:hover:bg-yellow-900/50 transition-colors"
+                              onClick={() => openEditModal(user)}
+                            >
+                              ✏️ Edit
+                            </button>
+                            <button
+                              className="inline-flex items-center px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-red-700 dark:text-red-200 bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-md hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                              onClick={() => handleDelete(user._id)}
+                            >
+                              🗑️ Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
-      )}
-      {/* Error Display */}
-      {error && (
-        <div className="w-full mt-4 bg-red-100 dark:bg-red-900/20 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-300 px-3 sm:px-4 py-2 sm:py-3 rounded text-sm sm:text-base">
-          <strong>Error:</strong> {error}
-        </div>
-      )}
-      
-      {/* Success Display */}
-      {success && (
-        <div className="w-full mt-4 bg-green-100 dark:bg-green-900/20 border border-green-400 dark:border-green-700 text-green-700 dark:text-green-300 px-3 sm:px-4 py-2 sm:py-3 rounded text-sm sm:text-base">
-          <strong>Success:</strong> {success}
-        </div>
-      )}
-      
-      {/* Users Table */}
-      <div className="w-full mt-6 bg-white dark:bg-gray-800 p-3 sm:p-6 lg:p-8 rounded-xl shadow-lg">
-        <h2 className="text-lg sm:text-xl font-bold mb-4 text-blue-700 dark:text-blue-400">Users</h2>
-        {users.length === 0 ? (
-          <div className="text-sm sm:text-base text-gray-500 dark:text-gray-400 text-center py-8">No users found.</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border border-gray-300 dark:border-gray-600 text-left text-xs sm:text-sm">
-              <thead className="bg-gray-50 dark:bg-gray-700">
-                <tr>
-                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">Name</th>
-                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">Email</th>
-                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">Role</th>
-                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">Sites</th>
-                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">Created By</th>
-                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                {users.map((user, idx) => (
-                  <tr key={user._id || idx} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">{user.name || '-'}</td>
-                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap max-w-32 sm:max-w-none truncate">{user.email || '-'}</td>
-                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">{user.role || '-'}</td>
-                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 max-w-32 sm:max-w-none">
-                      <div className="truncate" title={user.sites && user.sites.length > 0
-                        ? user.sites.map((site: any) => typeof site === 'string'
-                            ? (allSites.find(s => s._id === site)?.name || site)
-                            : site.name
-                          ).join(', ')
-                        : 'None'}>
-                        {user.sites && user.sites.length > 0
-                          ? user.sites.map((site: any) => typeof site === 'string'
-                              ? (allSites.find(s => s._id === site)?.name || site)
-                              : site.name
-                            ).join(', ')
-                          : 'None'}
-                      </div>
-                    </td>
-                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                      {user.createdBy ? (
-                        users.find(u => u._id === user.createdBy)?.name || 'Unknown'
-                      ) : (
-                        'System'
-                      )}
-                    </td>
-                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100">
-                      <div className="flex flex-col sm:flex-row gap-1 sm:gap-2">
-                        <button
-                          className="bg-yellow-400 dark:bg-yellow-500 px-2 py-1 rounded text-xs hover:bg-yellow-500 dark:hover:bg-yellow-600 transition whitespace-nowrap"
-                          onClick={() => openEditModal(user)}
-                        >
-                          Edit
-                        </button>
-                        <button
-                          className="bg-red-500 dark:bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-600 dark:hover:bg-red-700 transition whitespace-nowrap"
-                          onClick={() => handleDelete(user._id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
       </div>
     </DashboardLayout>
   );

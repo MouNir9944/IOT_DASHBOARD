@@ -15,7 +15,7 @@ import {
   CalendarIcon,
   ArrowDownTrayIcon
 } from '@heroicons/react/24/outline';
-import { DateTimePicker, LocalizationProvider } from '@mui/x-date-pickers';
+import { DatePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import TextField from '@mui/material/TextField';
 import { BarChart } from '@mui/x-charts/BarChart';
@@ -227,7 +227,21 @@ export default function SiteDetailPage() {
         break;
       case 'custom':
         if (customFrom && customTo) {
-          return { from: customFrom.toISOString(), to: customTo.toISOString() };
+          // Set from date to start of day (00:00:00) in UTC
+          const fromDate = new Date(Date.UTC(
+            customFrom.getUTCFullYear(), 
+            customFrom.getUTCMonth(), 
+            customFrom.getUTCDate(), 
+            0, 0, 0, 0
+          ));
+          // Set to date to end of day (23:59:59) in UTC
+          const toDate = new Date(Date.UTC(
+            customTo.getUTCFullYear(), 
+            customTo.getUTCMonth(), 
+            customTo.getUTCDate(), 
+            23, 59, 59, 999
+          ));
+          return { from: fromDate.toISOString(), to: toDate.toISOString() };
         }
         // Fallback to 7d if custom dates not set
         const fallbackDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6, 0, 0, 0, 0));
@@ -508,6 +522,12 @@ export default function SiteDetailPage() {
                 onClick={() => {
                   setSelectedPeriod(period.value);
                   setShowCustomPicker(period.value === 'custom');
+                  // Auto-apply for non-custom periods
+                  if (period.value !== 'custom') {
+                    console.log('📊 Applying period:', period.value);
+                    // Trigger a re-fetch of all chart data without page reload
+                    // The useEffect will automatically run when selectedPeriod changes
+                  }
                 }}
                 className={`px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
                   selectedPeriod === period.value
@@ -529,7 +549,7 @@ export default function SiteDetailPage() {
         {showCustomPicker && (
           <LocalizationProvider dateAdapter={AdapterDateFns}>
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
-              <DateTimePicker
+              <DatePicker
                 label={t('common.from')}
                 value={customFrom}
                 onChange={setCustomFrom}
@@ -537,13 +557,162 @@ export default function SiteDetailPage() {
                 className="w-full sm:w-40"
               />
               <span className="text-gray-500 dark:text-gray-400 text-center sm:hidden">{t('common.to')}</span>
-              <DateTimePicker
+              <DatePicker
                 label={t('common.to')}
                 value={customTo}
                 onChange={setCustomTo}
                 slotProps={{ textField: { size: 'small' } }}
                 className="w-full sm:w-40"
               />
+              <button
+                onClick={() => {
+                  console.log('📊 Applying custom date range for site charts...');
+                  // Trigger a re-fetch of all chart data by updating the dependency array
+                  // This will cause the useEffect to run again with the new custom dates
+                  // Force re-render by updating a dummy state or calling the fetch functions directly
+                  const { from, to } = getDateRange();
+                  const granularity = getGranularity();
+                  const periodLabels = generatePeriodLabels(from, to, granularity);
+                  
+                  // Helper to fetch stats
+                  const fetchStats = async (type: string, setData: any, setLabels: any) => {
+                    const qs = new URLSearchParams({ from, to, granularity }).toString();
+                    const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/${type}/stats?${qs}`;
+                    const res = await fetch(url, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' }
+                    });
+                    if (!res.ok) { setData(Array(periodLabels.length).fill(0)); setLabels(periodLabels); return; }
+                    const data = await res.json();
+                    console.log(`[fetchStats] type: ${type}, raw response:`, data);
+                    const filled = Array.isArray(data)
+                      ? data
+                      : data.values || [];
+                    console.log(`[fetchStats] type: ${type}, filled:`, filled);
+                    // Map period to value using dashboard approach for consistency
+                    const valueMap = new Map();
+                    filled.forEach((v: any) => {
+                      const period = v.period;
+                      const value = v.totalIndex ?? v.total ?? v.value ?? 0;
+                      valueMap.set(period, value);
+                    });
+                    
+                    // Use the exact same fillMissingPeriods logic as dashboard for consistency
+                    const fillMissingPeriods = (data: any[], fromDate: string, toDate: string, granularity: string) => {
+                      const startDate = new Date(fromDate);
+                      const endDate = new Date(toDate);
+                      const periods: { [key: string]: number } = {};
+                      const labels: string[] = [];
+                      
+                      // Initialize all periods with zero
+                      let currentDate = new Date(startDate);
+                      while (currentDate <= endDate) {
+                        let periodKey: string;
+                        let label: string;
+                        
+                        switch (granularity) {
+                          case 'day':
+                            // Use consistent date format that matches backend expectations
+                            periodKey = currentDate.toISOString().slice(0, 10);
+                            label = currentDate.toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric' 
+                            });
+                            currentDate.setDate(currentDate.getDate() + 1);
+                            break;
+                          case 'week':
+                            // Get ISO week
+                            const year = currentDate.getFullYear();
+                            const week = Math.ceil((currentDate.getTime() - new Date(year, 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
+                            periodKey = `${year}-W${week.toString().padStart(2, '0')}`;
+                            label = `Week ${week}`;
+                            currentDate.setDate(currentDate.getDate() + 7);
+                            break;
+                          case 'month':
+                            periodKey = currentDate.toISOString().slice(0, 7) + '-01T00:00:00.000Z';
+                            label = currentDate.toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              year: 'numeric' 
+                            });
+                            currentDate.setMonth(currentDate.getMonth() + 1);
+                            break;
+                          default:
+                            periodKey = currentDate.toISOString().slice(0, 10);
+                            label = currentDate.toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              day: 'numeric' 
+                            });
+                            currentDate.setDate(currentDate.getDate() + 1);
+                        }
+                        
+                        periods[periodKey] = 0;
+                        labels.push(label);
+                      }
+                      
+                      // Fill in actual data - handle both period and date formats from backend
+                      data.forEach(item => {
+                        let key = item.period;
+                        
+                        // If the backend returns a date instead of period, convert it to our period format
+                        if (item.date) {
+                          const itemDate = new Date(item.date);
+                          key = itemDate.toISOString().slice(0, 10);
+                        }
+                        
+                        // Also handle cases where the backend might return the period in a different format
+                        if (periods.hasOwnProperty(key)) {
+                          periods[key] = item.totalIndex || item.total || item.value || 0;
+                        }
+                      });
+                      
+                      // Convert to sorted array
+                      const sortedEntries = Object.entries(periods)
+                        .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime());
+                      
+                      const result = {
+                        values: sortedEntries.map(([_, total]) => total),
+                        labels: labels
+                      };
+                      
+                      return result;
+                    };
+                    
+                    // Apply the same fillMissingPeriods logic as dashboard
+                    const filledData = fillMissingPeriods(filled, from, to, granularity);
+                    
+                    setData(filledData.values);
+                    setLabels(filledData.labels);
+                  };
+                  
+                  // Fetch all chart data
+                  fetchStats('energy', setEnergyData, setEnergyLabels);
+                  fetchStats('solar', setSolarData, setSolarLabels);
+                  fetchStats('water', setWaterData, setWaterLabels);
+                  fetchStats('gas', setGasData, setGasLabels);
+                  
+                  // Fetch index values
+                  const fetchIndex = async (type: string, setter: any) => {
+                    const url = `${process.env.NEXT_PUBLIC_BACKEND_URL}/api/data/site/${siteId}/${type}/index`;
+                    const res = await fetch(url, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({})
+                    });
+                    if (!res.ok) { setter(null); return; }
+                    const data = await res.json();
+                    console.log(`[fetchIndex] type: ${type}, response:`, data);
+                    setter(data.totalIndex ?? data.value ?? data);
+                  };
+                  fetchIndex('energy', setEnergyIndex);
+                  fetchIndex('solar', setSolarIndex);
+                  fetchIndex('water', setWaterIndex);
+                  fetchIndex('gas', setGasIndex);
+                }}
+                className="px-3 py-1 text-xs sm:text-sm bg-blue-600 dark:bg-blue-500 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium shadow-sm"
+                disabled={!customFrom || !customTo}
+              >
+                Apply
+              </button>
             </div>
           </LocalizationProvider>
         )}

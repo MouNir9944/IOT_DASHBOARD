@@ -289,6 +289,12 @@ class NotificationService {
       // Check and send email
       if (notification.deliveryPreferences?.email?.enabled) {
         console.log(`📧 Email delivery enabled, checking if should send...`);
+        console.log(`📧 Email preferences:`, {
+          enabled: notification.deliveryPreferences.email.enabled,
+          frequency: notification.deliveryPreferences.email.frequency,
+          lastSent: notification.deliveryPreferences.email.lastSent
+        });
+        
         const shouldSendEmail = notification.shouldSendNotification('email');
         console.log(`📧 Should send email: ${shouldSendEmail}`);
         
@@ -297,9 +303,12 @@ class NotificationService {
           await this.sendEmail(notification, user);
         } else {
           console.log(`📧 Email not sent - frequency limit reached`);
+          console.log(`📧 Frequency: ${notification.deliveryPreferences.email.frequency}`);
+          console.log(`📧 Last sent: ${notification.deliveryPreferences.email.lastSent}`);
         }
       } else {
         console.log(`📧 Email delivery disabled or not configured`);
+        console.log(`📧 Email preferences:`, notification.deliveryPreferences?.email);
       }
 
       // SMS delivery removed

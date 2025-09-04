@@ -14,7 +14,7 @@ import MapWrapper from './MapWrapper';
 import { useSession } from 'next-auth/react';
 import { useEffect, useState } from 'react';
 import { BarChart } from '@mui/x-charts/BarChart';
-import { DateTimePicker, LocalizationProvider } from '@mui/x-date-pickers';
+import { DatePicker, LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 import TextField from '@mui/material/TextField';
 import { API_CONFIG, buildApiUrl } from '../../../config/api';
@@ -152,7 +152,21 @@ export default function DashboardContent() {
         break;
       case 'custom':
         if (customFrom && customTo) {
-          return { from: customFrom, to: customTo };
+          // Set from date to start of day (00:00:00) in UTC
+          const fromDate = new Date(Date.UTC(
+            new Date(customFrom).getUTCFullYear(), 
+            new Date(customFrom).getUTCMonth(), 
+            new Date(customFrom).getUTCDate(), 
+            0, 0, 0, 0
+          ));
+          // Set to date to end of day (23:59:59) in UTC
+          const toDate = new Date(Date.UTC(
+            new Date(customTo).getUTCFullYear(), 
+            new Date(customTo).getUTCMonth(), 
+            new Date(customTo).getUTCDate(), 
+            23, 59, 59, 999
+          ));
+          return { from: fromDate.toISOString(), to: toDate.toISOString() };
         }
         // Fallback to 7d if custom dates not set
         const fallbackDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6, 0, 0, 0, 0));
@@ -367,6 +381,11 @@ export default function DashboardContent() {
                   setDraftCustomFrom(customFrom ? new Date(customFrom) : null);
                   setDraftCustomTo(customTo ? new Date(customTo) : null);
                 }
+                // Auto-apply for non-custom periods
+                if (period.value !== 'custom') {
+                  console.log('📊 Applying period:', period.value);
+                  // The useEffect will automatically run when selectedPeriod changes
+                }
               }}
               className={`px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md transition-colors ${
                 selectedPeriod === period.value
@@ -382,24 +401,22 @@ export default function DashboardContent() {
           <LocalizationProvider dateAdapter={AdapterDateFns}>
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 w-full sm:w-auto">
               <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-                <DateTimePicker
+                <DatePicker
                   label="From"
                   value={draftCustomFrom}
                   onChange={(date: Date | null) => setDraftCustomFrom(date)}
                   slotProps={{
                     textField: { size: "small" }
                   }}
-                  format="yyyy-MM-dd HH:mm"
                 />
                 <span className="text-gray-500 dark:text-gray-400 text-center sm:hidden">to</span>
-                <DateTimePicker
+                <DatePicker
                   label="To"
                   value={draftCustomTo}
                   onChange={(date: Date | null) => setDraftCustomTo(date)}
                   slotProps={{
                     textField: { size: "small" }
                   }}
-                  format="yyyy-MM-dd HH:mm"
                 />
               </div>
               <button

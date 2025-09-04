@@ -24,7 +24,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { BarChart } from '@mui/x-charts/BarChart';
 import { LineChart } from '@mui/x-charts/LineChart';
-import { DateTimePicker, LocalizationProvider } from '@mui/x-date-pickers';
+import { DateTimePicker, LocalizationProvider, DatePicker } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
 
 // TypeScript interfaces
@@ -420,7 +420,21 @@ export default function DeviceDetailPage() {
         break;
       case 'custom':
         if (customFrom && customTo) {
-          return { from: customFrom.toISOString(), to: customTo.toISOString() };
+          // Set from date to start of day (00:00:00) in UTC
+          const fromDate = new Date(Date.UTC(
+            customFrom.getUTCFullYear(), 
+            customFrom.getUTCMonth(), 
+            customFrom.getUTCDate(), 
+            0, 0, 0, 0
+          ));
+          // Set to date to end of day (23:59:59) in UTC
+          const toDate = new Date(Date.UTC(
+            customTo.getUTCFullYear(), 
+            customTo.getUTCMonth(), 
+            customTo.getUTCDate(), 
+            23, 59, 59, 999
+          ));
+          return { from: fromDate.toISOString(), to: toDate.toISOString() };
         }
         // Fallback to 7d if custom dates not set
         const fallbackDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6, 0, 0, 0, 0));
@@ -576,8 +590,19 @@ export default function DeviceDetailPage() {
       return;
     }
     
-    const startDate = exportFrom;
-    const endDate = exportTo;
+    // Convert dates to UTC with proper time boundaries
+    const startDate = new Date(Date.UTC(
+      exportFrom.getUTCFullYear(), 
+      exportFrom.getUTCMonth(), 
+      exportFrom.getUTCDate(), 
+      0, 0, 0, 0
+    ));
+    const endDate = new Date(Date.UTC(
+      exportTo.getUTCFullYear(), 
+      exportTo.getUTCMonth(), 
+      exportTo.getUTCDate(), 
+      23, 59, 59, 999
+    ));
 
     // Estimate export size and warn user if it's large
     const sizeEstimate = estimateExportSize(startDate, endDate, exportSamplingInterval);
@@ -1443,40 +1468,60 @@ export default function DeviceDetailPage() {
   // Helper function to get water metrics date range based on selected period
   const getWaterMetricsDateRange = () => {
     const now = new Date();
-    const to = now.toISOString();
+    let to: string;
     let from: string;
     
     switch (waterMetricsPeriod) {
       case '1h':
+        to = now.toISOString();
         from = new Date(now.getTime() - 1 * 60 * 60 * 1000).toISOString();
         break;
       case '6h':
+        to = now.toISOString();
         from = new Date(now.getTime() - 6 * 60 * 60 * 1000).toISOString();
         break;
       case '12h':
+        to = now.toISOString();
         from = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
         break;
       case '24h':
+        to = now.toISOString();
         from = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
         break;
       case '7d':
-        from = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        // Use UTC time for consistent boundaries
+        const utcNow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 59, 59, 999));
+        to = utcNow.toISOString();
+        const sevenDaysAgo = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 6, 0, 0, 0, 0));
+        from = sevenDaysAgo.toISOString();
         break;
       case 'custom':
         if (waterMetricsCustomFrom && waterMetricsCustomTo) {
-          const customToEndOfDay = new Date(waterMetricsCustomTo);
-          customToEndOfDay.setHours(23, 59, 59, 999);
-          const customFromStartOfDay = new Date(waterMetricsCustomFrom);
-          customFromStartOfDay.setHours(0, 0, 0, 0);
+          // Set from date to start of day (00:00:00) in UTC
+          const fromDate = new Date(Date.UTC(
+            waterMetricsCustomFrom.getUTCFullYear(), 
+            waterMetricsCustomFrom.getUTCMonth(), 
+            waterMetricsCustomFrom.getUTCDate(), 
+            0, 0, 0, 0
+          ));
+          // Set to date to end of day (23:59:59) in UTC
+          const toDate = new Date(Date.UTC(
+            waterMetricsCustomTo.getUTCFullYear(), 
+            waterMetricsCustomTo.getUTCMonth(), 
+            waterMetricsCustomTo.getUTCDate(), 
+            23, 59, 59, 999
+          ));
           return { 
-            from: customFromStartOfDay.toISOString(), 
-            to: customToEndOfDay.toISOString() 
+            from: fromDate.toISOString(), 
+            to: toDate.toISOString() 
           };
         }
         // Fallback to 24h if custom dates not set
+        to = now.toISOString();
         from = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
         break;
       default:
+        to = now.toISOString();
         from = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
     }
     
@@ -2482,50 +2527,51 @@ export default function DeviceDetailPage() {
       <div className="p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6 bg-gray-50 dark:bg-gray-900">
         {/* Header */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
-          <div className="flex gap-3 mb-4">
-
-            <button
-              onClick={() => router.push(`/dashboard/sites/${siteId}`)}
-              className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"
-            >
-              {t('common.back')} {t('sites.title')}
-            </button>
-             {/* Water Device Specific Alert Configuration Button */}
-            {(user.role === 'superadmin' || user.role === 'admin' ) && (
+          <div className="flex flex-col sm:flex-row gap-3 mb-4">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 flex-1">
               <button
-                onClick={() => router.push(`/dashboard/sites/${siteId}/devices/${deviceId}/water/alerts`)}
-                className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2"
+                onClick={() => router.push(`/dashboard/sites/${siteId}`)}
+                className="bg-gray-500 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors text-sm sm:text-base"
               >
-                <BellIcon className="w-4 h-4" />
-                {t('devices.deviceAlerts')}
+                {t('common.back')} {t('sites.title')}
+              </button>
+              {/* Water Device Specific Alert Configuration Button */}
+              {(user.role === 'superadmin' || user.role === 'admin' ) && (
+                <button
+                  onClick={() => router.push(`/dashboard/sites/${siteId}/devices/${deviceId}/water/alerts`)}
+                  className="bg-orange-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-orange-700 transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
+                >
+                  <BellIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">{t('devices.deviceAlerts')}</span>
+                  <span className="sm:hidden">Alerts</span>
+                </button>
+              )}
+            </div>
+            {/* Historical Data Export Button for Water Devices */}
+            {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && device?.type === 'water' && (
+              <button
+                onClick={handleExportClick}
+                className="bg-green-600 text-white px-3 sm:px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center justify-center gap-2 text-sm sm:text-base"
+                title={t('analytics.exportData')}
+              >
+                <ArrowDownTrayIcon className="w-3 h-3" />
+                <span className="hidden sm:inline">{t('analytics.exportData')}</span>
+                <span className="sm:hidden">Export</span>
               </button>
             )}
-                                  {/* Historical Data Export Button for Water Devices */}
-          {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && device?.type === 'water' && (
-              <div className="flex items-center justify-end">
-                                  <button
-                    onClick={handleExportClick}
-                    className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2"
-                    title={t('analytics.exportData')}
-                  >
-                    <ArrowDownTrayIcon className="w-3 h-3" />
-                    {t('analytics.exportData')}
-                  </button>
-              </div>
-          )}
           </div>
 
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
             <div className="flex items-center gap-3">
               {getTypeIcon(device.type)}
               <div>
-                <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">{device.name}</h1>
-                <p className="text-gray-600 dark:text-gray-400">{t('sites.title')}: {site?.name}</p>
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-gray-900 dark:text-gray-100">{device.name}</h1>
+                <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">{t('sites.title')}: {site?.name}</p>
               </div>
             </div>
             <div className="flex items-center gap-2">
               {getStatusIcon(device.status)}
-              <span className={`px-3 py-1 rounded-full text-sm font-medium ${
+              <span className={`px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-medium ${
                 device.status === 'active' ? 'bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-200' :
                 device.status === 'maintenance' ? 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-800 dark:text-yellow-200' :
                 'bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200'
@@ -2590,27 +2636,27 @@ export default function DeviceDetailPage() {
 
         {/* Real-time Data Display */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{t('devices.deviceHistory')}</h2>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100">{t('devices.deviceHistory')}</h2>
             <div className="flex items-center gap-2">
               <div className={`w-3 h-3 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                              <span className={`text-sm ${isConnected ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                  {isConnected ? t('dashboard.online') : t('dashboard.offline')}
-                </span>
+              <span className={`text-xs sm:text-sm ${isConnected ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                {isConnected ? t('dashboard.online') : t('dashboard.offline')}
+              </span>
             </div>
           </div>
           
           {realtimeData ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               {/* Main Value */}
-              <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-900/10 rounded-lg p-4">
-                <div className="flex items-center gap-3 mb-2">
-                  {getTypeIcon(device?.type || 'unknown', 'w-6 h-6')}
-                  <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">
+              <div className="bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-900/10 rounded-lg p-3 sm:p-4">
+                <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                  {getTypeIcon(device?.type || 'unknown', 'w-5 h-5 sm:w-6 sm:h-6')}
+                  <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm">
                     {t('parameters.consumption')} {t('devices.water')}
                   </h4>
                 </div>
-                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                <div className="text-lg sm:text-xl lg:text-2xl font-bold text-blue-600 dark:text-blue-400">
                   {formatValue(device?.type || 'unknown', realtimeData.value || realtimeData.consumption)}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
@@ -2620,14 +2666,14 @@ export default function DeviceDetailPage() {
 
               {/* Flow Rate */}
               {realtimeData.flowRate !== null && realtimeData.flowRate !== undefined && (
-                <div className="bg-gradient-to-r from-cyan-50 to-cyan-100 dark:from-cyan-900/20 dark:to-cyan-900/10 rounded-lg p-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-6 h-6 bg-cyan-500 rounded-full flex items-center justify-center">
+                <div className="bg-gradient-to-r from-cyan-50 to-cyan-100 dark:from-cyan-900/20 dark:to-cyan-900/10 rounded-lg p-3 sm:p-4">
+                  <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                    <div className="w-5 h-5 sm:w-6 sm:h-6 bg-cyan-500 rounded-full flex items-center justify-center">
                       <span className="text-white text-xs font-bold">↔</span>
                     </div>
-                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{t('parameters.flow')}</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm">{t('parameters.flow')}</h4>
                   </div>
-                  <div className="text-2xl font-bold text-cyan-600 dark:text-cyan-400">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-cyan-600 dark:text-cyan-400">
                     {(realtimeData.flowRate || 0).toFixed(2)}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">L/s</div>
@@ -2636,14 +2682,14 @@ export default function DeviceDetailPage() {
 
               {/* Pressure */}
               {realtimeData.pressure !== null && realtimeData.pressure !== undefined && (
-                <div className="bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/10 rounded-lg p-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-6 h-6 bg-purple-500 rounded-full flex items-center justify-center">
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-900/10 rounded-lg p-3 sm:p-4">
+                  <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                    <div className="w-5 h-5 sm:w-6 sm:h-6 bg-purple-500 rounded-full flex items-center justify-center">
                       <span className="text-white text-xs font-bold">P</span>
                     </div>
-                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{t('parameters.pressure')}</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm">{t('parameters.pressure')}</h4>
                   </div>
-                  <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-purple-600 dark:text-purple-400">
                     {(realtimeData.pressure || 0).toFixed(2)}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">bar</div>
@@ -2652,14 +2698,14 @@ export default function DeviceDetailPage() {
 
               {/* Temperature */}
               {realtimeData.temperature !== null && realtimeData.temperature !== undefined && (
-                <div className="bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-900/10 rounded-lg p-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-6 h-6 bg-red-500 rounded-full flex items-center justify-center">
+                <div className="bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900/20 dark:to-red-900/10 rounded-lg p-3 sm:p-4">
+                  <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                    <div className="w-5 h-5 sm:w-6 sm:h-6 bg-red-500 rounded-full flex items-center justify-center">
                       <span className="text-white text-xs font-bold">°C</span>
                     </div>
-                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{t('parameters.temperature')}</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm">{t('parameters.temperature')}</h4>
                   </div>
-                  <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-red-600 dark:text-red-400">
                     {(realtimeData.temperature || 0).toFixed(1)}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">°C</div>
@@ -2670,14 +2716,14 @@ export default function DeviceDetailPage() {
 
               {/* Humidity */}
               {realtimeData.humidity !== null && realtimeData.humidity !== undefined && (
-                <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 rounded-lg p-4">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-6 h-6 bg-green-500 rounded-full flex items-center justify-center">
+                <div className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-900/10 rounded-lg p-3 sm:p-4">
+                  <div className="flex items-center gap-2 sm:gap-3 mb-2">
+                    <div className="w-5 h-5 sm:w-6 sm:h-6 bg-green-500 rounded-full flex items-center justify-center">
                       <span className="text-white text-xs font-bold">%</span>
                     </div>
-                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{t('parameters.humidity')}</h4>
+                    <h4 className="font-semibold text-gray-900 dark:text-gray-100 text-xs sm:text-sm">{t('parameters.humidity')}</h4>
                   </div>
-                  <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                  <div className="text-lg sm:text-xl lg:text-2xl font-bold text-green-600 dark:text-green-400">
                     {realtimeData.humidity.toFixed(0)}
                   </div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">%</div>
@@ -2698,17 +2744,17 @@ export default function DeviceDetailPage() {
 
         {/* Configuration Mode */}
         {configMode && (
-          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{t('devices.deviceDetails')}</h2>
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">{t('devices.deviceDetails')}</h2>
             <form onSubmit={handleConfigSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('devices.deviceName')}</label>
                   <input
                     type="text"
                     value={configData.name || ''}
                     onChange={(e) => setConfigData({...configData, name: e.target.value})}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     required
                   />
                 </div>
@@ -2717,7 +2763,7 @@ export default function DeviceDetailPage() {
                   <select
                     value={configData.status || 'active'}
                     onChange={(e) => setConfigData({...configData, status: e.target.value as 'active' | 'inactive' | 'maintenance'})}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   >
                     <option value="active">{t('dashboard.online')}</option>
                     <option value="inactive">{t('dashboard.offline')}</option>
@@ -2731,7 +2777,7 @@ export default function DeviceDetailPage() {
                     step="0.1"
                     value={configData.threshold || 0}
                     onChange={(e) => setConfigData({...configData, threshold: parseFloat(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   />
                 </div>
                 <div>
@@ -2740,24 +2786,24 @@ export default function DeviceDetailPage() {
                     type="number"
                     value={configData.readingInterval || 5}
                     onChange={(e) => setConfigData({...configData, readingInterval: parseInt(e.target.value)})}
-                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   />
                 </div>
               </div>
               <div>
-                                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.description')}</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.description')}</label>
                 <textarea
                   rows={3}
                   value={configData.description || ''}
                   onChange={(e) => setConfigData({...configData, description: e.target.value})}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   placeholder={t('devices.deviceDetails') + '...'}
                 />
               </div>
-              <div className="flex justify-between">
+              <div className="flex flex-col sm:flex-row gap-3 sm:justify-between">
                 <button
                   type="submit"
-                  className="bg-blue-600 dark:bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium"
+                  className="w-full sm:w-auto bg-blue-600 dark:bg-blue-500 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium text-sm sm:text-base"
                   disabled={loading}
                 >
                   {loading ? t('common.loading') : t('profile.saveChanges')}
@@ -2765,7 +2811,7 @@ export default function DeviceDetailPage() {
                 <button
                   type="button"
                   onClick={handleDeleteDevice}
-                  className="bg-red-600 dark:bg-red-500 text-white px-6 py-3 rounded-lg hover:bg-red-700 dark:hover:bg-red-600 transition-colors font-medium flex items-center gap-2 ml-auto"
+                  className="w-full sm:w-auto bg-red-600 dark:bg-red-500 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg hover:bg-red-700 dark:hover:bg-red-600 transition-colors font-medium flex items-center justify-center gap-2 text-sm sm:text-base"
                   disabled={loading}
                 >
                   <ExclamationTriangleIcon className="w-4 h-4" />
@@ -2791,21 +2837,21 @@ export default function DeviceDetailPage() {
 
         {/* Enhanced Water Metrics Chart - Only for Water Devices */}
         {device?.type === 'water' && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md">
-                  <span className="text-white text-lg">🌊</span>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-100 dark:border-gray-700 p-4 sm:p-6">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-6">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center shadow-md">
+                  <span className="text-white text-base sm:text-lg">🌊</span>
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">{t('devices.deviceHistory')}</h3>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{t('devices.deviceParameters')}</p>
+                  <h3 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100">{t('devices.deviceHistory')}</h3>
+                  <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{t('devices.deviceParameters')}</p>
                 </div>
                 
                 {/* Enhanced Real-time indicator with timestamp */}
                 {lastRealtimeUpdate && (
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2 bg-green-50 px-3 py-1 rounded-full border border-green-200">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+                    <div className="flex items-center gap-2 bg-green-50 px-2 sm:px-3 py-1 rounded-full border border-green-200">
                       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                       <span className="text-xs text-green-700 font-semibold">{t('common.live')}</span>
                     </div>
@@ -2817,13 +2863,13 @@ export default function DeviceDetailPage() {
               </div>
               
               {/* Enhanced Metric Selector with current values */}
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.select')} {t('common.metric')}:</span>
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">{t('common.select')} {t('common.metric')}:</span>
                   <select
                     value={selectedMetric}
                     onChange={(e) => setSelectedMetric(e.target.value as 'flowRate' | 'pressure' | 'temperature')}
-                    className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm font-medium"
+                    className="px-3 sm:px-4 py-2 text-xs sm:text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm font-medium"
                   >
                     <option value="flowRate">{t('parameters.flow')} ({t('units.liters')}/s)</option>
                     <option value="pressure">{t('parameters.pressure')} ({t('units.bar')})</option>
@@ -2878,92 +2924,110 @@ export default function DeviceDetailPage() {
             </div>
             
             {/* Time Range Selection for Water Metrics */}
-            <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <CalendarIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Real-time Mode</span>
-                </div>
-                
-                {/* Connection Status */}
-                <div className="flex items-center gap-2">
-                  <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                  <span className={`text-xs ${isConnected ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                    {isConnected ? 'Connected' : 'Disconnected'}
-                  </span>
-                  {isConnected && (
-                    <span className="text-xs text-blue-600 dark:text-blue-400">
-                      • {deviceId}      
-                    </span>
-                  )}
-                  {lastRealtimeUpdate && (
-                    <span className="text-xs text-gray-500 dark:text-gray-400">
-                      • Last: {lastRealtimeUpdate.toLocaleTimeString()}
-                    </span>
-                  )}
+            <div className="mb-6 p-3 sm:p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <CalendarIcon className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 dark:text-gray-400" />
+                    <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Real-time Mode</span>
+                  </div>
+                  
+                  {/* Connection Status */}
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`}></div>
+                      <span className={`text-xs ${isConnected ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                        {isConnected ? 'Connected' : 'Disconnected'}
+                      </span>
+                    </div>
+                    {isConnected && (
+                      <span className="text-xs text-blue-600 dark:text-blue-400">
+                        • {deviceId}      
+                      </span>
+                    )}
+                    {lastRealtimeUpdate && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        • Last: {lastRealtimeUpdate.toLocaleTimeString()}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 
                 {/* Time Range Selection */}
-                <div className="flex items-center gap-3">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Time Range:</span>
-                </div>
-                    
-                <div className="flex flex-wrap items-center gap-2">
-                  {waterMetricsTimePeriods.map((period) => (
-                    <button
-                      key={period.value}
-                      onClick={() => {
-                        setWaterMetricsPeriod(period.value);
-                        setShowWaterMetricsCustomPicker(period.value === 'custom');
-                      }}
-                      className={`px-3 py-1 text-sm rounded-md transition-colors font-medium ${
-                        waterMetricsPeriod === period.value
-                          ? 'bg-blue-500 dark:bg-blue-600 text-white shadow-md'
-                          : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 shadow-sm'
-                      }`}
-                    >
-                      {period.label}
-                    </button>
-                  ))}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Time Range:</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {waterMetricsTimePeriods.map((period) => (
+                      <button
+                        key={period.value}
+                        onClick={() => {
+                          setWaterMetricsPeriod(period.value);
+                          setShowWaterMetricsCustomPicker(period.value === 'custom');
+                          // Auto-apply for non-custom periods
+                          if (period.value !== 'custom') {
+                            console.log('🌊 Applying water metrics period:', period.value);
+                            fetchAdditionalMetrics(device?.type || 'water');
+                          }
+                        }}
+                        className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded-md transition-colors font-medium ${
+                          waterMetricsPeriod === period.value
+                            ? 'bg-blue-500 dark:bg-blue-600 text-white shadow-md'
+                            : 'bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 shadow-sm'
+                        }`}
+                      >
+                        {period.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
                 
                 {showWaterMetricsCustomPicker && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
                     <LocalizationProvider dateAdapter={AdapterDateFns}>
-                      <DateTimePicker
-                        label="From"
+                      <DatePicker
+                        label="From Date"
                         value={waterMetricsCustomFrom}
                         onChange={setWaterMetricsCustomFrom}
                         slotProps={{ 
                           textField: { 
                             size: 'small',
-                            className: 'w-32'
+                            className: 'w-full sm:w-32'
                           } 
                         }}
                       />
-                      <span className="text-gray-500 dark:text-gray-400">to</span>
-                      <DateTimePicker
-                        label="To"
+                      <span className="text-gray-500 dark:text-gray-400 text-sm">to</span>
+                      <DatePicker
+                        label="To Date"
                         value={waterMetricsCustomTo}
                         onChange={setWaterMetricsCustomTo}
                         slotProps={{ 
                           textField: { 
                             size: 'small',
-                            className: 'w-32'
+                            className: 'w-full sm:w-32'
                           } 
                         }}
                       />
                     </LocalizationProvider>
+                    <button
+                      onClick={() => {
+                        console.log('🌊 Applying custom date range for water metrics...');
+                        fetchAdditionalMetrics(device?.type || 'water');
+                      }}
+                      className="px-3 py-1 text-xs sm:text-sm bg-blue-600 dark:bg-blue-500 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium shadow-sm"
+                      disabled={!waterMetricsCustomFrom || !waterMetricsCustomTo}
+                    >
+                      Apply
+                    </button>
                   </div>
                 )}
                 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
                   <button
                     onClick={() => {
                       console.log('🌊 Refreshing water metrics data...');
                       fetchAdditionalMetrics(device.type);
                     }}
-                    className="px-3 py-1 text-sm bg-blue-600 dark:bg-blue-500 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium shadow-sm"
+                    className="px-3 py-1 text-xs sm:text-sm bg-blue-600 dark:bg-blue-500 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium shadow-sm"
                   >
                     Refresh
                   </button>
@@ -3084,111 +3148,109 @@ export default function DeviceDetailPage() {
                 return (
                   <div>
                     {/* Data Source Indicator */}
-
-                    
                     <div className="relative">
-                      <LineChart
-                        key={`${selectedMetric}-${lastRealtimeUpdate?.getTime() || Date.now()}`}
-                        xAxis={[{ 
-                          data: currentData.timestamps.length > 0 ? currentData.timestamps : periodLabels.map(d => new Date(d)), 
-                          label: 'Time',
-                          valueFormatter: (value: any) => {
-                            const date = value instanceof Date ? value : new Date(value);
-                            if (isNaN(date.getTime())) {
-                              return 'Invalid Date';
+                      <div className="overflow-x-auto">
+                        <LineChart
+                          key={`${selectedMetric}-${lastRealtimeUpdate?.getTime() || Date.now()}`}
+                          xAxis={[{ 
+                            data: currentData.timestamps.length > 0 ? currentData.timestamps : periodLabels.map(d => new Date(d)), 
+                            label: 'Time',
+                            valueFormatter: (value: any) => {
+                              const date = value instanceof Date ? value : new Date(value);
+                              if (isNaN(date.getTime())) {
+                                return 'Invalid Date';
+                              }
+                              return date.toLocaleString('en-US', { 
+                                month: 'short', 
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              });
+                            },
+                            tickLabelStyle: {
+                              fontSize: window.innerWidth < 640 ? 10 : 12,
+                              fill: '#6b7280'
+                            },
+                            labelStyle: {
+                              fontSize: window.innerWidth < 640 ? 12 : 14,
+                              fontWeight: 600,
+                              fill: '#374151'
                             }
-                            return date.toLocaleString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            });
-                          },
-                          tickLabelStyle: {
-                            fontSize: 12,
-                            fill: '#6b7280'
-                          },
-                          labelStyle: {
-                            fontSize: 14,
-                            fontWeight: 600,
-                            fill: '#374151'
-                          }
-                        }]}
-                        yAxis={[{
-                          label: `${getMetricLabel(selectedMetric)} (${getMetricUnit(selectedMetric)})`,
-                          tickLabelStyle: {
-                            fontSize: 12,
-                            fill: '#6b7280'
-                          },
-                          labelStyle: {
-                            fontSize: 14,
-                            fontWeight: 600,
-                            fill: '#374151'
-                          }
-                        }]}
-                                              series={[{ 
-                        data: currentData.data, 
-                        label: getMetricLabel(selectedMetric),
-                        color: getMetricColor(selectedMetric),
-                        curve: 'monotoneX',
-                        area: false,
-                        showMark: false // Remove dots to show only the line
-                      }]}
-                        height={350}
-                        grid={{ 
-                          vertical: true, 
-                          horizontal: true
-                        }}
-                        margin={{
-                          left: 80,
-                          right: 40,
-                          top: 40,
-                          bottom: 60
-                        }}
-                        axisHighlight={{
-                          x: 'line',
-                          y: 'line'
-                        }}
-                      />
+                          }]}
+                          yAxis={[{
+                            label: `${getMetricLabel(selectedMetric)} (${getMetricUnit(selectedMetric)})`,
+                            tickLabelStyle: {
+                              fontSize: window.innerWidth < 640 ? 10 : 12,
+                              fill: '#6b7280'
+                            },
+                            labelStyle: {
+                              fontSize: window.innerWidth < 640 ? 12 : 14,
+                              fontWeight: 600,
+                              fill: '#374151'
+                            }
+                          }]}
+                          series={[{ 
+                            data: currentData.data, 
+                            label: getMetricLabel(selectedMetric),
+                            color: getMetricColor(selectedMetric),
+                            curve: 'monotoneX',
+                            area: false,
+                            showMark: false // Remove dots to show only the line
+                          }]}
+                          height={window.innerWidth < 640 ? 250 : window.innerWidth < 1024 ? 300 : 350}
+                          grid={{ 
+                            vertical: true, 
+                            horizontal: true
+                          }}
+                          margin={{
+                            left: window.innerWidth < 640 ? 60 : 80,
+                            right: window.innerWidth < 640 ? 20 : 40,
+                            top: window.innerWidth < 640 ? 30 : 40,
+                            bottom: window.innerWidth < 640 ? 50 : 60
+                          }}
+                          axisHighlight={{
+                            x: 'line',
+                            y: 'line'
+                          }}
+                        />
+                      </div>
                       
                       {/* Zoom Controls */}
-                      <div className="absolute top-2 right-2 flex gap-2">
+                      <div className="absolute top-2 right-2 flex gap-1 sm:gap-2">
                         {/* Zoom Level Indicator */}
-                        <div className="bg-white border border-gray-300 rounded-md px-2 py-1 text-xs text-gray-600 font-mono">
+                        <div className="bg-white border border-gray-300 rounded-md px-1 sm:px-2 py-1 text-xs text-gray-600 font-mono">
                           {zoomLevel.toFixed(1)}x
                         </div>
                         <button
                           onClick={handleZoomIn}
-                          className="w-8 h-8 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 flex items-center justify-center"
+                          className="w-6 h-6 sm:w-8 sm:h-8 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 flex items-center justify-center"
                           title={`Zoom In (${zoomLevel.toFixed(1)}x)`}
                         >
-                          <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 7v6m3-3H7" />
                           </svg>
                         </button>
                         
                         <button
                           onClick={handleZoomOut}
-                          className="w-8 h-8 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 flex items-center justify-center"
+                          className="w-6 h-6 sm:w-8 sm:h-8 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 flex items-center justify-center"
                           title={`Zoom Out (${zoomLevel.toFixed(1)}x)`}
                         >
-                          <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0zM10 10h6" />
                           </svg>
                         </button>
                         
                         <button
                           onClick={handleResetZoom}
-                          className="w-8 h-8 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 flex items-center justify-center"
+                          className="w-6 h-6 sm:w-8 sm:h-8 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 flex items-center justify-center"
                           title="Reset Zoom"
                         >
-                          <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                           </svg>
                         </button>
                       </div>
-
-
                     </div>
                   </div>
                 );
@@ -3205,12 +3267,12 @@ export default function DeviceDetailPage() {
               }
             })()}
             
-            <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-6">
+            <div className="mt-6 p-3 sm:p-4 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-6">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Unit:</span>
-                    <span className="text-sm text-gray-900 dark:text-gray-100 font-semibold">{(() => {
+                    <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Unit:</span>
+                    <span className="text-xs sm:text-sm text-gray-900 dark:text-gray-100 font-semibold">{(() => {
                       switch(selectedMetric) {
                         case 'flowRate': return 'L/s';
                         case 'pressure': return 'bar';
@@ -3220,8 +3282,8 @@ export default function DeviceDetailPage() {
                     })()}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Data Points:</span>
-                    <span className="text-sm text-gray-900 dark:text-gray-100 font-semibold">{(() => {
+                    <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Data Points:</span>
+                    <span className="text-xs sm:text-sm text-gray-900 dark:text-gray-100 font-semibold">{(() => {
                       const realtimeData = realtimeDataPoints[selectedMetric];
                       const historicalData = combinedChartData[selectedMetric];
                       const currentData = (realtimeData && realtimeData.data.length > 0) ? realtimeData : historicalData;
@@ -3234,29 +3296,29 @@ export default function DeviceDetailPage() {
                   })() && (
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-                      <span className="text-sm text-green-700 dark:text-green-400 font-semibold">Real-time</span>
+                      <span className="text-xs sm:text-sm text-green-700 dark:text-green-400 font-semibold">Real-time</span>
                     </div>
                   )}
                   
                   {/* Enhanced Connection Status */}
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Connection:</span>
+                    <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Connection:</span>
                     {isConnected ? (
                       <div className="flex items-center gap-1">
                         <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-sm text-green-700 dark:text-green-400 font-semibold">Connected</span>
+                        <span className="text-xs sm:text-sm text-green-700 dark:text-green-400 font-semibold">Connected</span>
                       </div>
                     ) : (
                       <div className="flex items-center gap-1">
                         <div className="w-2 h-2 bg-red-500 rounded-full"></div>
-                        <span className="text-sm text-red-700 dark:text-red-400 font-semibold">Disconnected</span>
+                        <span className="text-xs sm:text-sm text-red-700 dark:text-red-400 font-semibold">Disconnected</span>
                       </div>
                     )}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-sm text-gray-600 dark:text-gray-400">{(() => {
+                <div className="text-left lg:text-right">
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">{(() => {
                       const realtimeData = realtimeDataPoints[selectedMetric];
                       return realtimeData && realtimeData.data.length > 0 ? 'Historical + Real-time data' : 'Historical data (waiting for real-time)';
                     })()}</span>
@@ -3275,23 +3337,24 @@ export default function DeviceDetailPage() {
         {/* Device Consumption Charts - Moved below Water Metrics */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 sm:p-6">
           {/* Time Period Selector */}
-          <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4 mb-4">
-            <div className="flex items-center gap-2">
-              <CalendarIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Time Period:</span>
+          <div className="flex flex-col gap-4 mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <CalendarIcon className="w-4 h-4 sm:w-5 sm:h-5 text-gray-500 dark:text-gray-400" />
+                <span className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">Time Period:</span>
+              </div>
+              {/* Debug info */}
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {(() => {
+                  const { from, to } = getDateRange();
+                  const fromDate = new Date(from).toLocaleDateString();
+                  const toDate = new Date(to).toLocaleDateString();
+                  return `${fromDate} to ${toDate} (${chartLabels.length} days)`;
+                })()}
+              </div>
             </div>
-            {/* Debug info */}
-            <div className="text-xs text-gray-500 dark:text-gray-400">
-              {(() => {
-                const { from, to } = getDateRange();
-                const fromDate = new Date(from).toLocaleDateString();
-                const toDate = new Date(to).toLocaleDateString();
-                return `${fromDate} to ${toDate} (${chartLabels.length} days)`;
-              })()}
-            </div>
-            
 
-            <div className="flex flex-1 items-center">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
               <div className="flex flex-wrap gap-2 items-center">
                 {timePeriods.map((period) => (
                   <button
@@ -3299,8 +3362,13 @@ export default function DeviceDetailPage() {
                     onClick={() => {
                       setSelectedPeriod(period.value);
                       setShowCustomPicker(period.value === 'custom');
+                      // Auto-apply for non-custom periods
+                      if (period.value !== 'custom') {
+                        console.log('📊 Applying period:', period.value);
+                        fetchDeviceStats(device?.type || 'water');
+                      }
                     }}
-                    className={`px-3 py-1 text-sm rounded-md transition-colors font-medium ${
+                    className={`px-2 sm:px-3 py-1 text-xs sm:text-sm rounded-md transition-colors font-medium ${
                       selectedPeriod === period.value
                         ? 'bg-blue-500 dark:bg-blue-600 text-white shadow-md'
                         : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600 shadow-sm'
@@ -3310,101 +3378,146 @@ export default function DeviceDetailPage() {
                   </button>
                 ))}
               </div>
-              <div className="flex-1" />
+              {showCustomPicker && (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                  <LocalizationProvider dateAdapter={AdapterDateFns}>
+                    <DatePicker
+                      label="From Date"
+                      value={customFrom}
+                      onChange={setCustomFrom}
+                      slotProps={{ textField: { size: 'small', className: 'w-full sm:w-auto' } }}
+                    />
+                    <span className="text-gray-500 dark:text-gray-400 text-sm">to</span>
+                    <DatePicker
+                      label="To Date"
+                      value={customTo}
+                      onChange={setCustomTo}
+                      slotProps={{ textField: { size: 'small', className: 'w-full sm:w-auto' } }}
+                    />
+                  </LocalizationProvider>
+                  <button
+                    onClick={() => {
+                      console.log('📊 Applying custom date range for consumption chart...');
+                      fetchDeviceStats(device?.type || 'water');
+                    }}
+                    className="px-3 py-1 text-xs sm:text-sm bg-blue-600 dark:bg-blue-500 text-white rounded-md hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors font-medium shadow-sm"
+                    disabled={!customFrom || !customTo}
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
             </div>
-            {showCustomPicker && (
-              <LocalizationProvider dateAdapter={AdapterDateFns}>
-                <DateTimePicker
-                  label="From"
-                  value={customFrom}
-                  onChange={setCustomFrom}
-                  slotProps={{ textField: { size: 'small' } }}
-                />
-                <span className="text-gray-500 dark:text-gray-400">to</span>
-                <DateTimePicker
-                  label="To"
-                  value={customTo}
-                  onChange={setCustomTo}
-                  slotProps={{ textField: { size: 'small' } }}
-                />
-              </LocalizationProvider>
-            )}
           </div>
 
           {/* Chart Display */}
-          <div className="mb-4 flex justify-between items-center">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+          <div className="mb-4 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">
               Daily Consumption Chart ({chartLabels.length} days)
             </h3>
             {(user.role === 'superadmin' || user.role === 'admin' || user.role === 'user') && chartData && chartData.length > 0 && (
               <button
                 onClick={exportChartData}
-                className="px-3 py-1 text-sm rounded-md bg-green-600 dark:bg-green-500 text-white hover:bg-green-700 dark:hover:bg-green-600 transition-colors flex items-center gap-1"
+                className="px-3 py-1 text-xs sm:text-sm rounded-md bg-green-600 dark:bg-green-500 text-white hover:bg-green-700 dark:hover:bg-green-600 transition-colors flex items-center justify-center gap-1"
                 title="Export chart data to CSV"
               >
-                <ArrowDownTrayIcon className="w-4 h-4" />
-                Export Chart Data
+                <ArrowDownTrayIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+                <span className="hidden sm:inline">Export Chart Data</span>
+                <span className="sm:hidden">Export</span>
               </button>
             )}
           </div>
-          {chartType === 'line' ? (
-            <LineChart
-              xAxis={[{ 
-                data: chartLabels.map(d => new Date(d)), 
-                label: 'Date',
-                valueFormatter: (value: any) => {
-                  // Ensure we have a valid Date object
-                  const date = value instanceof Date ? value : new Date(value);
-                  if (isNaN(date.getTime())) {
-                    return 'Invalid Date';
+          <div className="overflow-x-auto">
+            {chartType === 'line' ? (
+              <LineChart
+                xAxis={[{ 
+                  data: chartLabels.map(d => new Date(d)), 
+                  label: 'Date',
+                  valueFormatter: (value: any) => {
+                    // Ensure we have a valid Date object
+                    const date = value instanceof Date ? value : new Date(value);
+                    if (isNaN(date.getTime())) {
+                      return 'Invalid Date';
+                    }
+                    return date.toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric',
+                      hour: getGranularity() === 'hour' ? '2-digit' : undefined,
+                      minute: getGranularity() === 'hour' ? '2-digit' : undefined
+                    });
+                  },
+                  tickLabelStyle: {
+                    fontSize: window.innerWidth < 640 ? 10 : 12,
+                    fill: '#6b7280'
+                  },
+                  labelStyle: {
+                    fontSize: window.innerWidth < 640 ? 12 : 14,
+                    fontWeight: 600,
+                    fill: '#374151'
                   }
-                  return date.toLocaleDateString('en-US', { 
-                    month: 'short', 
-                    day: 'numeric',
-                    hour: getGranularity() === 'hour' ? '2-digit' : undefined,
-                    minute: getGranularity() === 'hour' ? '2-digit' : undefined
-                  });
-                }
-              }]}
-              series={[{ 
-                data: chartData, 
-                label: 'Water Consumption',
-                color: '#9333EA',
-                curve: 'linear',
-                area: true
-              }]}
-              height={350}
-              grid={{ vertical: true, horizontal: true }}
-            />
-          ) : (
-            <BarChart
-              xAxis={[{ 
-                data: chartLabels.map(d => {
-                  const date = new Date(d);
-                  // Debug: Log the date conversion
-                  const formattedDate = date.toLocaleDateString('en-US', { 
-                    month: 'short', 
-                    day: 'numeric',
-                    hour: getGranularity() === 'hour' ? '2-digit' : undefined,
-                    minute: getGranularity() === 'hour' ? '2-digit' : undefined
-                  });
-                  console.log('🔍 Chart label conversion:', {
-                    original: d,
-                    parsedDate: date.toISOString(),
-                    formatted: formattedDate
-                  });
-                  return formattedDate;
-                }), 
-                label: 'Date' 
-              }]}
-              series={[{ 
-                data: chartData, 
-                label: 'Water Consumption',
-                color: '#9333EA'
-              }]}
-              height={350}
-            />
-          )}
+                }]}
+                series={[{ 
+                  data: chartData, 
+                  label: 'Water Consumption',
+                  color: '#9333EA',
+                  curve: 'linear',
+                  area: true
+                }]}
+                height={window.innerWidth < 640 ? 250 : window.innerWidth < 1024 ? 300 : 350}
+                grid={{ vertical: true, horizontal: true }}
+                margin={{
+                  left: window.innerWidth < 640 ? 60 : 80,
+                  right: window.innerWidth < 640 ? 20 : 40,
+                  top: window.innerWidth < 640 ? 30 : 40,
+                  bottom: window.innerWidth < 640 ? 50 : 60
+                }}
+              />
+            ) : (
+              <BarChart
+                xAxis={[{ 
+                  data: chartLabels.map(d => {
+                    const date = new Date(d);
+                    // Debug: Log the date conversion
+                    const formattedDate = date.toLocaleDateString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric',
+                      hour: getGranularity() === 'hour' ? '2-digit' : undefined,
+                      minute: getGranularity() === 'hour' ? '2-digit' : undefined
+                    });
+                    console.log('🔍 Chart label conversion:', {
+                      original: d,
+                      parsedDate: date.toISOString(),
+                      formatted: formattedDate
+                    });
+                    return formattedDate;
+                  }), 
+                  label: 'Date',
+                  tickLabelStyle: {
+                    fontSize: window.innerWidth < 640 ? 10 : 12,
+                    fill: '#6b7280'
+                  },
+                  labelStyle: {
+                    fontSize: window.innerWidth < 640 ? 12 : 14,
+                    fontWeight: 600,
+                    fill: '#374151'
+                  }
+                }]}
+                series={[{ 
+                  data: chartData, 
+                  label: 'Water Consumption',
+                  color: '#9333EA'
+                }]}
+                height={window.innerWidth < 640 ? 250 : window.innerWidth < 1024 ? 300 : 350}
+                grid={{ vertical: true, horizontal: true }}
+                margin={{
+                  left: window.innerWidth < 640 ? 60 : 80,
+                  right: window.innerWidth < 640 ? 20 : 40,
+                  top: window.innerWidth < 640 ? 30 : 40,
+                  bottom: window.innerWidth < 640 ? 50 : 60
+                }}
+              />
+            )}
+          </div>
           
 
           
@@ -3493,9 +3606,9 @@ export default function DeviceDetailPage() {
                 
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.from')} {t('common.date')} {t('common.and')} {t('common.time')}</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.from')} {t('common.date')}</label>
                     <LocalizationProvider dateAdapter={AdapterDateFns}>
-                      <DateTimePicker
+                      <DatePicker
                         value={exportFrom}
                         onChange={setExportFrom}
                         slotProps={{ 
@@ -3509,9 +3622,9 @@ export default function DeviceDetailPage() {
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.to')} {t('common.date')} {t('common.and')} {t('common.time')}</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{t('common.to')} {t('common.date')}</label>
                     <LocalizationProvider dateAdapter={AdapterDateFns}>
-                      <DateTimePicker
+                      <DatePicker
                         value={exportTo}
                         onChange={setExportTo}
                         slotProps={{ 

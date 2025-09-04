@@ -308,32 +308,37 @@ export default function CreateUserPage() {
 
   return (
     <DashboardLayout user={user}>
-
-      
-      <div className="flex justify-center mt-6 mb-4 w-full px-2 sm:px-0">
-        <button
-          className="bg-blue-600 dark:bg-blue-500 text-white py-2 px-4 rounded font-semibold hover:bg-blue-700 dark:hover:bg-blue-600 transition w-full max-w-xs sm:max-w-md"
-          onClick={openCreateModal}
-        >
-          {t('users.createUser')}
-        </button>
-      </div>
+      <div className="p-3 sm:p-6 bg-gray-50 dark:bg-gray-900">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">User Management</h1>
+          <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400">Create and manage users in your system</p>
+        </div>
+        
+        <div className="flex justify-center mb-6">
+          <button
+            className="bg-blue-600 dark:bg-blue-500 text-white py-2 px-4 rounded font-semibold hover:bg-blue-700 dark:hover:bg-blue-600 transition w-full max-w-xs sm:max-w-md"
+            onClick={openCreateModal}
+          >
+            {t('users.createUser')}
+          </button>
+        </div>
       {/* Modal for Create/Edit User */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 dark:bg-opacity-60 px-2">
-          <div className="bg-white dark:bg-gray-800 p-4 sm:p-8 rounded-xl shadow-lg w-full max-w-xs sm:max-w-lg relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 dark:bg-opacity-60 p-2 sm:p-4">
+          <div className="bg-white dark:bg-gray-800 p-4 sm:p-6 lg:p-8 rounded-xl shadow-lg w-full max-w-sm sm:max-w-lg lg:max-w-xl relative max-h-[90vh] overflow-y-auto">
             <button
-              className="absolute top-2 right-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-2xl"
+              className="absolute top-2 right-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 text-2xl z-10"
               onClick={() => setIsModalOpen(false)}
             >
               &times;
             </button>
-            <h2 className="text-2xl font-bold mb-6 text-blue-700 dark:text-blue-400">{modalMode === 'edit' ? t('users.editUser') : t('users.createUser')}</h2>
-            <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
+            <h2 className="text-lg sm:text-xl lg:text-2xl font-bold mb-4 sm:mb-6 text-blue-700 dark:text-blue-400 pr-8">{modalMode === 'edit' ? t('users.editUser') : t('users.createUser')}</h2>
+            <form className="flex flex-col gap-3 sm:gap-4" onSubmit={handleSubmit}>
               <div>
-                <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.name')}</label>
+                <label className="block text-sm sm:text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.name')}</label>
                 <input
-                  className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  className="w-full border border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-sm sm:text-base rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   type="text"
                   value={name}
                   onChange={e => setName(e.target.value)}
@@ -341,9 +346,9 @@ export default function CreateUserPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.email')}</label>
+                <label className="block text-sm sm:text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.email')}</label>
                 <input
-                  className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  className="w-full border border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-sm sm:text-base rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
@@ -351,9 +356,9 @@ export default function CreateUserPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('profile.changePassword')}</label>
+                <label className="block text-sm sm:text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('profile.changePassword')}</label>
                 <input
-                  className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  className="w-full border border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-sm sm:text-base rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
@@ -361,9 +366,9 @@ export default function CreateUserPage() {
                 />
               </div>
               <div>
-                <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.role')}</label>
+                <label className="block text-sm sm:text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">{t('common.role')}</label>
                 <select
-                  className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  className="w-full border border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-sm sm:text-base rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                   value={role}
                   onChange={e => setRole(e.target.value)}
                   required
@@ -384,7 +389,7 @@ export default function CreateUserPage() {
                     <option value="user">User - Basic site access</option>
                   )}
                 </select>
-                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1">
                   {role === 'user' && 'Users can only be assigned to one site'}
                   {role === 'technicien' && 'Techniciens require at least one assigned site'}
                   {role === 'sous admin' && 'Sous Admins can manage multiple sites and create techniciens and users'}
@@ -393,10 +398,10 @@ export default function CreateUserPage() {
                 </div>
               </div>
               <div>
-                <label className="block font-semibold mb-1 text-gray-900 dark:text-gray-100">
+                <label className="block text-sm sm:text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">
                   Assign Sites {sites.length > 0 && <span className="text-green-600 dark:text-green-400">({sites.length} selected)</span>}
                 </label>
-                <div className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mb-2">
                   {session.user.role === 'superadmin' 
                     ? 'Superadmin can assign any site to users'
                     : session.user.role === 'admin'
@@ -410,7 +415,7 @@ export default function CreateUserPage() {
                 </div>
                 {role === 'user' ? (
                   <select
-                    className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                    className="w-full border border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-sm sm:text-base rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                     value={sites[0] || ''}
                     onChange={e => {
                       setSites(e.target.value ? [e.target.value] : []);
@@ -426,7 +431,7 @@ export default function CreateUserPage() {
                   </select>
                 ) : (
                   <select
-                    className="w-full border border-gray-300 dark:border-gray-600 p-2 rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 min-h-[120px]"
+                    className="w-full border border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-sm sm:text-base rounded focus:outline-none focus:ring-2 focus:ring-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 min-h-[100px] sm:min-h-[120px]"
                     multiple
                     value={sites}
                     onChange={e => {
@@ -447,13 +452,13 @@ export default function CreateUserPage() {
                   </select>
                 )}
                 {role !== 'user' && (
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-1">
                     Hold Ctrl (or Cmd on Mac) to select multiple sites
                   </div>
                 )}
                 {sites.length > 0 && (
                   <div className="mt-2">
-                    <div className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">Selected Sites:</div>
+                    <div className="text-xs sm:text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">Selected Sites:</div>
                     <div className="flex flex-wrap gap-1">
                       {sites.map(siteId => {
                         const site = allSites.find(s => s._id === siteId);
@@ -470,8 +475,8 @@ export default function CreateUserPage() {
                   </div>
                 )}
               </div>
-                            <button
-                className="w-full bg-blue-600 dark:bg-blue-500 text-white py-2 rounded font-semibold hover:bg-blue-700 dark:hover:bg-blue-600 transition disabled:opacity-50"
+              <button
+                className="w-full bg-blue-600 dark:bg-blue-500 text-white py-2 sm:py-3 text-sm sm:text-base rounded font-semibold hover:bg-blue-700 dark:hover:bg-blue-600 transition disabled:opacity-50"
                 type="submit"
                 disabled={loading}
               >
@@ -486,7 +491,7 @@ export default function CreateUserPage() {
               {editingUser && (
                 <button
                   type="button"
-                  className="w-full mt-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 py-2 rounded font-semibold hover:bg-gray-400 dark:hover:bg-gray-500 transition"
+                  className="w-full mt-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300 py-2 sm:py-3 text-sm sm:text-base rounded font-semibold hover:bg-gray-400 dark:hover:bg-gray-500 transition"
                   onClick={() => {
                     setEditingUser(null);
                     setName('');
@@ -501,77 +506,86 @@ export default function CreateUserPage() {
                 </button>
               )}
             </form>
-            {success && <div className="text-green-600 dark:text-green-400 mt-4">{success}</div>}
-            {error && <div className="text-red-600 dark:text-red-400 mt-4">{error}</div>}
+            {success && <div className="text-sm sm:text-base text-green-600 dark:text-green-400 mt-4 p-2 bg-green-50 dark:bg-green-900/20 rounded">{success}</div>}
+            {error && <div className="text-sm sm:text-base text-red-600 dark:text-red-400 mt-4 p-2 bg-red-50 dark:bg-red-900/20 rounded">{error}</div>}
           </div>
         </div>
       )}
       {/* Error Display */}
       {error && (
-        <div className="w-full mt-4 bg-red-100 dark:bg-red-900/20 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-300 px-4 py-3 rounded">
+        <div className="w-full mt-4 bg-red-100 dark:bg-red-900/20 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-300 px-3 sm:px-4 py-2 sm:py-3 rounded text-sm sm:text-base">
           <strong>Error:</strong> {error}
         </div>
       )}
       
       {/* Success Display */}
       {success && (
-        <div className="w-full mt-4 bg-green-100 dark:bg-green-900/20 border border-green-400 dark:border-green-700 text-green-700 dark:text-green-300 px-4 py-3 rounded">
+        <div className="w-full mt-4 bg-green-100 dark:bg-green-900/20 border border-green-400 dark:border-green-700 text-green-700 dark:text-green-300 px-3 sm:px-4 py-2 sm:py-3 rounded text-sm sm:text-base">
           <strong>Success:</strong> {success}
         </div>
       )}
       
       {/* Users Table */}
-      <div className="w-full mt-6 bg-white dark:bg-gray-800 p-2 sm:p-8 rounded-xl shadow-lg overflow-x-auto">
-        <h2 className="text-xl font-bold mb-4 text-blue-700 dark:text-blue-400">Users</h2>
+      <div className="w-full mt-6 bg-white dark:bg-gray-800 p-3 sm:p-6 lg:p-8 rounded-xl shadow-lg">
+        <h2 className="text-lg sm:text-xl font-bold mb-4 text-blue-700 dark:text-blue-400">Users</h2>
         {users.length === 0 ? (
-          <div className="text-gray-500 dark:text-gray-400">No users found.</div>
+          <div className="text-sm sm:text-base text-gray-500 dark:text-gray-400 text-center py-8">No users found.</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full border border-gray-300 dark:border-gray-600 text-left text-xs sm:text-sm">
               <thead className="bg-gray-50 dark:bg-gray-700">
                 <tr>
-                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">Name</th>
-                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">Email</th>
-                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">Role</th>
-                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">Sites</th>
-                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">Created By</th>
-                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">Actions</th>
+                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">Name</th>
+                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">Email</th>
+                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">Role</th>
+                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">Sites</th>
+                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">Created By</th>
+                  <th className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {users.map((user, idx) => (
                   <tr key={user._id || idx} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">{user.name || '-'}</td>
-                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">{user.email || '-'}</td>
-                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">{user.role || '-'}</td>
-                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">
-                      {user.sites && user.sites.length > 0
+                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">{user.name || '-'}</td>
+                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap max-w-32 sm:max-w-none truncate">{user.email || '-'}</td>
+                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">{user.role || '-'}</td>
+                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 max-w-32 sm:max-w-none">
+                      <div className="truncate" title={user.sites && user.sites.length > 0
                         ? user.sites.map((site: any) => typeof site === 'string'
                             ? (allSites.find(s => s._id === site)?.name || site)
                             : site.name
                           ).join(', ')
-                        : 'None'}
+                        : 'None'}>
+                        {user.sites && user.sites.length > 0
+                          ? user.sites.map((site: any) => typeof site === 'string'
+                              ? (allSites.find(s => s._id === site)?.name || site)
+                              : site.name
+                            ).join(', ')
+                          : 'None'}
+                      </div>
                     </td>
-                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">
+                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100 whitespace-nowrap">
                       {user.createdBy ? (
                         users.find(u => u._id === user.createdBy)?.name || 'Unknown'
                       ) : (
                         'System'
                       )}
                     </td>
-                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 text-gray-900 dark:text-gray-100">
-                      <button
-                        className="bg-yellow-400 dark:bg-yellow-500 px-2 py-1 rounded mr-2 hover:bg-yellow-500 dark:hover:bg-yellow-600 transition"
-                        onClick={() => openEditModal(user)}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        className="bg-red-500 dark:bg-red-600 text-white px-2 py-1 rounded hover:bg-red-600 dark:hover:bg-red-700 transition"
-                        onClick={() => handleDelete(user._id)}
-                      >
-                        Delete
-                      </button>
+                    <td className="border-b border-gray-300 dark:border-gray-600 p-2 sm:p-3 text-gray-900 dark:text-gray-100">
+                      <div className="flex flex-col sm:flex-row gap-1 sm:gap-2">
+                        <button
+                          className="bg-yellow-400 dark:bg-yellow-500 px-2 py-1 rounded text-xs hover:bg-yellow-500 dark:hover:bg-yellow-600 transition whitespace-nowrap"
+                          onClick={() => openEditModal(user)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          className="bg-red-500 dark:bg-red-600 text-white px-2 py-1 rounded text-xs hover:bg-red-600 dark:hover:bg-red-700 transition whitespace-nowrap"
+                          onClick={() => handleDelete(user._id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -579,6 +593,7 @@ export default function CreateUserPage() {
             </table>
           </div>
         )}
+      </div>
       </div>
     </DashboardLayout>
   );

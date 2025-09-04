@@ -177,26 +177,74 @@ notificationSchema.methods.updateDeliveryPreferences = async function(preference
 // Instance method to check if notification should be sent based on frequency
 notificationSchema.methods.shouldSendNotification = function(channel) {
   const delivery = this.deliveryPreferences[channel];
-  if (!delivery || !delivery.enabled) return false;
   
-  if (delivery.frequency === 'immediate') return true;
+  console.log(`🔍 Checking if should send ${channel} notification:`, {
+    channel,
+    deliveryExists: !!delivery,
+    enabled: delivery?.enabled,
+    frequency: delivery?.frequency,
+    lastSent: delivery?.lastSent
+  });
   
-  if (!delivery.lastSent) return true;
+  if (!delivery || !delivery.enabled) {
+    console.log(`❌ ${channel} delivery not enabled or not configured`);
+    return false;
+  }
+  
+  if (delivery.frequency === 'immediate') {
+    console.log(`✅ ${channel} frequency is immediate - allowing send`);
+    return true;
+  }
+  
+  if (!delivery.lastSent) {
+    console.log(`✅ ${channel} never sent before - allowing first send`);
+    return true;
+  }
   
   const now = new Date();
   const lastSent = new Date(delivery.lastSent);
   const diffInMs = now.getTime() - lastSent.getTime();
   
+  console.log(`⏱️ ${channel} frequency check:`, {
+    frequency: delivery.frequency,
+    lastSent: lastSent.toISOString(),
+    currentTime: now.toISOString(),
+    diffInMs: diffInMs,
+    diffInMinutes: Math.round(diffInMs / 60000),
+    diffInHours: Math.round(diffInMs / 3600000)
+  });
+  
+  let minIntervalMs = 0;
+  let shouldSend = false;
+  
   switch (delivery.frequency) {
     case 'hourly':
-      return diffInMs >= 60 * 60 * 1000; // 1 hour
+      minIntervalMs = 60 * 60 * 1000; // 1 hour
+      shouldSend = diffInMs >= minIntervalMs;
+      break;
     case 'daily':
-      return diffInMs >= 24 * 60 * 60 * 1000; // 24 hours
+      minIntervalMs = 24 * 60 * 60 * 1000; // 24 hours
+      shouldSend = diffInMs >= minIntervalMs;
+      break;
     case 'weekly':
-      return diffInMs >= 7 * 24 * 60 * 60 * 1000; // 7 days
+      minIntervalMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+      shouldSend = diffInMs >= minIntervalMs;
+      break;
     default:
-      return true;
+      shouldSend = true;
+      break;
   }
+  
+  if (shouldSend) {
+    console.log(`✅ ${channel} frequency check passed - can send`);
+  } else {
+    const remainingMs = minIntervalMs - diffInMs;
+    const remainingMinutes = Math.round(remainingMs / 60000);
+    const remainingHours = Math.round(remainingMs / 3600000);
+    console.log(`⏱️ ${channel} frequency check failed - next allowed in ${remainingMinutes}m (${remainingHours}h)`);
+  }
+  
+  return shouldSend;
 };
 
 const Notification = mongoose.model('Notification', notificationSchema);

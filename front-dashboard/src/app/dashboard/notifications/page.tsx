@@ -439,87 +439,89 @@ export default function NotificationsPage() {
 
   return (
     <DashboardLayout user={user}>
-      <div className="p-6 bg-gray-50 dark:bg-gray-900">
+      <div className="p-3 sm:p-6 bg-gray-50 dark:bg-gray-900">
         {/* Header */}
         <div className="mb-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-                      <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{t('notifications.title')}</h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">{t('notifications.allNotifications')}</p>
+              <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{t('notifications.title')}</h1>
+              <p className="text-gray-600 dark:text-gray-400 mt-1">{t('notifications.allNotifications')}</p>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4">
               <button
                 onClick={handleMarkAllAsRead}
-                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                className="flex items-center justify-center space-x-2 px-3 sm:px-4 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-md hover:bg-blue-100 dark:hover:bg-blue-900/30"
               >
                 <CheckIcon className="w-4 h-4" />
-                <span>Mark All as Read</span>
+                <span className="hidden sm:inline">Mark All as Read</span>
+                <span className="sm:hidden">Mark All Read</span>
               </button>
               <button
                 onClick={() => setShowFilters(!showFilters)}
-                className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
+                className="flex items-center justify-center space-x-2 px-3 sm:px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700"
               >
                 <FunnelIcon className="w-4 h-4" />
-                <span>Filters</span>
+                <span className="hidden sm:inline">Filters</span>
+                <span className="sm:hidden">Filter</span>
                 {showFilters ? <ChevronUpIcon className="w-4 h-4" /> : <ChevronDownIcon className="w-4 h-4" />}
               </button>
             </div>
           </div>
           
           {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mt-6">
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mt-6">
+            <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center">
                 <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                  <BellIcon className="w-5 h-5 text-blue-600" />
+                  <BellIcon className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                 </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Total</p>
-                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.total}</p>
+                <div className="ml-2 sm:ml-3">
+                  <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400">Total</p>
+                  <p className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.total}</p>
                 </div>
               </div>
             </div>
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center">
                 <div className="p-2 bg-red-100 dark:bg-red-900/30 rounded-lg">
-                  <ExclamationCircleIcon className="w-5 h-5 text-red-600" />
+                  <ExclamationCircleIcon className="w-4 h-4 sm:w-5 sm:h-5 text-red-600" />
                 </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">New</p>
-                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.new}</p>
+                <div className="ml-2 sm:ml-3">
+                  <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400">New</p>
+                  <p className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.new}</p>
                 </div>
               </div>
             </div>
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center">
                 <div className="p-2 bg-gray-100 dark:bg-gray-700 rounded-lg">
-                  <EyeIcon className="w-5 h-5 text-gray-600" />
+                  <EyeIcon className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
                 </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Read</p>
-                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.read}</p>
+                <div className="ml-2 sm:ml-3">
+                  <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400">Read</p>
+                  <p className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.read}</p>
                 </div>
               </div>
             </div>
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center">
                 <div className="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
-                  <CheckIcon className="w-5 h-5 text-yellow-600" />
+                  <CheckIcon className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-600" />
                 </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Acknowledged</p>
-                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.acknowledged}</p>
+                <div className="ml-2 sm:ml-3">
+                  <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400">Acknowledged</p>
+                  <p className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.acknowledged}</p>
                 </div>
               </div>
             </div>
-            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700">
               <div className="flex items-center">
                 <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                  <CheckCircleIcon className="w-5 h-5 text-green-600" />
+                  <CheckCircleIcon className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
                 </div>
-                <div className="ml-3">
-                  <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Resolved</p>
-                  <p className="text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.resolved}</p>
+                <div className="ml-2 sm:ml-3">
+                  <p className="text-xs sm:text-sm font-medium text-gray-500 dark:text-gray-400">Resolved</p>
+                  <p className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">{counts.resolved}</p>
                 </div>
               </div>
             </div>
@@ -528,14 +530,14 @@ export default function NotificationsPage() {
 
         {/* Filters */}
         {showFilters && (
-          <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border border-gray-200 dark:border-gray-700 mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white dark:bg-gray-800 p-3 sm:p-4 rounded-lg border border-gray-200 dark:border-gray-700 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Type</label>
                 <select
                   value={typeFilter}
                   onChange={(e) => setTypeFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
                   <option value="all">All Types</option>
                   <option value="info">Info</option>
@@ -550,7 +552,7 @@ export default function NotificationsPage() {
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
                   <option value="all">All Categories</option>
                   <option value="device">Device</option>
@@ -565,7 +567,7 @@ export default function NotificationsPage() {
                 <select
                   value={priorityFilter}
                   onChange={(e) => setPriorityFilter(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100"
                 >
                   <option value="all">All Priorities</option>
                   <option value="low">Low</option>
@@ -575,10 +577,10 @@ export default function NotificationsPage() {
                 </select>
               </div>
             </div>
-            <div className="mt-4 flex justify-end">
+            <div className="mt-4 flex justify-center sm:justify-end">
               <button
                 onClick={clearFilters}
-                className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
+                className="w-full sm:w-auto px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600"
               >
                 Clear Filters
               </button>
@@ -589,7 +591,7 @@ export default function NotificationsPage() {
         {/* Tabs */}
         <div className="mb-6">
           <div className="border-b border-gray-200 dark:border-gray-700">
-            <nav className="-mb-px flex space-x-8">
+            <nav className="-mb-px flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2 lg:space-x-8">
               {(['new', 'acknowledged', 'resolved'] as const).map((tab) => (
                 <button
                   key={tab}
@@ -597,16 +599,16 @@ export default function NotificationsPage() {
                     setActiveTab(tab);
                     setCurrentPage(1);
                   }}
-                  className={`flex items-center space-x-2 py-2 px-1 border-b-2 font-medium text-sm ${
+                  className={`flex items-center justify-center sm:justify-start space-x-2 py-2 px-3 sm:px-1 border-b-2 sm:border-b-2 border-l-2 sm:border-l-0 font-medium text-sm rounded-t-lg sm:rounded-t-none ${
                     activeTab === tab
-                      ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'
+                      ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 sm:bg-transparent'
+                      : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800/50 sm:hover:bg-transparent'
                   }`}
                 >
                   {getTabIcon(tab)}
-                  <span>{getTabTitle(tab)}</span>
+                  <span className="text-xs sm:text-sm">{getTabTitle(tab)}</span>
                   {getTabCount(tab) > 0 && (
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
                       tab === 'new' ? 'bg-red-100 text-red-800' :
                       tab === 'acknowledged' ? 'bg-yellow-100 text-yellow-800' :
                       'bg-green-100 text-green-800'
@@ -622,9 +624,9 @@ export default function NotificationsPage() {
 
         {/* Notifications List */}
         <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700">
-          <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{getTabTitle(activeTab)}</h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
+          <div className="px-3 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+            <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">{getTabTitle(activeTab)}</h2>
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400">
               {totalNotifications} {activeTab === 'new' ? 'alerts' : 'notifications'} found
             </p>
           </div>
@@ -670,27 +672,27 @@ export default function NotificationsPage() {
                 return (
                   <div
                     key={notification._id}
-                    className={`p-6 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
+                    className={`p-3 sm:p-6 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${
                       notification.status === 'new' ? 'bg-blue-50 dark:bg-blue-900/20' : ''
                     }`}
                   >
-                    <div className="flex items-start space-x-4">
+                    <div className="flex items-start space-x-3 sm:space-x-4">
                       <div className="flex-shrink-0">
                         {getTypeIcon(notification.type)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center space-x-2">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0">
+                          <div className="flex flex-col sm:flex-row sm:items-center space-y-1 sm:space-y-0 sm:space-x-2">
                             <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
                               {notification.title}
                             </h3>
                             {notification.status === 'new' && (
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200">
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 w-fit">
                                 New
                               </span>
                             )}
                           </div>
-                          <div className="flex items-center space-x-2">
+                          <div className="flex flex-wrap items-center gap-1 sm:gap-2">
                             <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium border ${getPriorityColor(notification.priority)}`}>
                               {notification.priority}
                             </span>
@@ -704,29 +706,32 @@ export default function NotificationsPage() {
                           {notification.message}
                         </p>
                         
-                        <div className="mt-3 flex items-center space-x-4 text-xs text-gray-500 dark:text-gray-400">
+                        <div className="mt-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-gray-500 dark:text-gray-400">
                           <div className="flex items-center space-x-1" title={formatDateTime(notification.createdAt)}>
                             <ClockIcon className="w-4 h-4" />
-                            <span>{formatTime(notification.createdAt)} • {formatDateTime(notification.createdAt)}</span>
+                            <span className="hidden sm:inline">{formatTime(notification.createdAt)} • {formatDateTime(notification.createdAt)}</span>
+                            <span className="sm:hidden">{formatTime(notification.createdAt)}</span>
                           </div>
-                          {notification.category && (
-                            <div className="flex items-center space-x-1">
-                              {getCategoryIcon(notification.category)}
-                              <span className="capitalize">{notification.category}</span>
-                            </div>
-                          )}
-                          {siteName && (
-                            <div className="flex items-center space-x-1">
-                              <BuildingOfficeIcon className="w-4 h-4" />
-                              <span>{siteName}</span>
-                            </div>
-                          )}
-                          {deviceName && (
-                            <div className="flex items-center space-x-1">
-                              <DevicePhoneMobileIcon className="w-4 h-4" />
-                              <span>{deviceName}</span>
-                            </div>
-                          )}
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+                            {notification.category && (
+                              <div className="flex items-center space-x-1">
+                                {getCategoryIcon(notification.category)}
+                                <span className="capitalize">{notification.category}</span>
+                              </div>
+                            )}
+                            {siteName && (
+                              <div className="flex items-center space-x-1">
+                                <BuildingOfficeIcon className="w-4 h-4" />
+                                <span className="truncate max-w-32 sm:max-w-none">{siteName}</span>
+                              </div>
+                            )}
+                            {deviceName && (
+                              <div className="flex items-center space-x-1">
+                                <DevicePhoneMobileIcon className="w-4 h-4" />
+                                <span className="truncate max-w-32 sm:max-w-none">{deviceName}</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                         {(parameter || value !== undefined || threshold !== undefined) && (
                           <div className="mt-2 text-xs text-gray-700 dark:text-gray-300">
@@ -740,32 +745,35 @@ export default function NotificationsPage() {
                         )}
                         
                         {/* Action buttons */}
-                        <div className="mt-4 flex items-center space-x-2">
+                        <div className="mt-4 flex flex-wrap items-center gap-2">
                           {notification.status === 'new' && (
                             <button
                               onClick={() => handleMarkAsRead(notification._id)}
-                              className="inline-flex items-center px-3 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
+                              className="inline-flex items-center px-2 sm:px-3 py-1 text-xs font-medium text-gray-700 dark:text-gray-300 bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-600"
                             >
                               <EyeIcon className="w-3 h-3 mr-1" />
-                              Mark as Read
+                              <span className="hidden sm:inline">Mark as Read</span>
+                              <span className="sm:hidden">Read</span>
                             </button>
                           )}
                           {notification.status !== 'acknowledged' && notification.status !== 'resolved' && (
                             <button
                               onClick={() => handleAcknowledge(notification._id)}
-                              className="inline-flex items-center px-3 py-1 text-xs font-medium text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-md hover:bg-yellow-200 dark:hover:bg-yellow-900/30"
+                              className="inline-flex items-center px-2 sm:px-3 py-1 text-xs font-medium text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-md hover:bg-yellow-200 dark:hover:bg-yellow-900/30"
                             >
                               <CheckIcon className="w-3 h-3 mr-1" />
-                              Acknowledge
+                              <span className="hidden sm:inline">Acknowledge</span>
+                              <span className="sm:hidden">Ack</span>
                             </button>
                           )}
                           {notification.status !== 'resolved' && (
                             <button
                               onClick={() => handleResolve(notification._id)}
-                              className="inline-flex items-center px-3 py-1 text-xs font-medium text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/20 border border-green-300 dark:border-green-700 rounded-md hover:bg-green-200 dark:hover:bg-green-900/30"
+                              className="inline-flex items-center px-2 sm:px-3 py-1 text-xs font-medium text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/20 border border-green-300 dark:border-green-700 rounded-md hover:bg-green-200 dark:hover:bg-green-900/30"
                             >
                               <CheckCircleIcon className="w-3 h-3 mr-1" />
-                              Resolve
+                              <span className="hidden sm:inline">Resolve</span>
+                              <span className="sm:hidden">Resolve</span>
                             </button>
                           )}
                         </div>
@@ -780,11 +788,11 @@ export default function NotificationsPage() {
 
         {/* Mark All as Read Feedback */}
         {showMarkAllFeedback && markAllResult && (
-          <div className="mt-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-4">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-2">
-                <CheckCircleIcon className="w-5 h-5 text-green-600" />
-                <h3 className="text-lg font-semibold text-green-800 dark:text-green-200">
+          <div className="mt-6 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-700 rounded-lg p-3 sm:p-4">
+            <div className="flex items-start sm:items-center justify-between mb-4 gap-2">
+              <div className="flex items-center space-x-2 min-w-0 flex-1">
+                <CheckCircleIcon className="w-5 h-5 text-green-600 flex-shrink-0" />
+                <h3 className="text-sm sm:text-lg font-semibold text-green-800 dark:text-green-200 truncate">
                   {markAllResult.message}
                 </h3>
               </div>
@@ -793,7 +801,7 @@ export default function NotificationsPage() {
                   setShowMarkAllFeedback(false);
                   setMarkAllResult(null);
                 }}
-                className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300"
+                className="text-green-600 dark:text-green-400 hover:text-green-800 dark:hover:text-green-300 flex-shrink-0"
               >
                 <XMarkIcon className="w-5 h-5" />
               </button>
@@ -859,27 +867,29 @@ export default function NotificationsPage() {
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="mt-6 flex items-center justify-between">
-            <div className="text-sm text-gray-700">
+          <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 text-center sm:text-left">
               Showing {((currentPage - 1) * 20) + 1} to {Math.min(currentPage * 20, totalNotifications)} of {totalNotifications} notifications
             </div>
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 disabled={currentPage === 1}
-                className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Previous
+                <span className="hidden sm:inline">Previous</span>
+                <span className="sm:hidden">Prev</span>
               </button>
-              <span className="px-3 py-2 text-sm text-gray-700">
+              <span className="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
                 Page {currentPage} of {totalPages}
               </span>
               <button
                 onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 disabled={currentPage === totalPages}
-                className="px-3 py-2 text-sm font-medium text-gray-500 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3 py-2 text-sm font-medium text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Next
+                <span className="hidden sm:inline">Next</span>
+                <span className="sm:hidden">Next</span>
               </button>
             </div>
           </div>

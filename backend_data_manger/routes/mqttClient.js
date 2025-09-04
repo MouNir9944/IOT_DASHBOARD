@@ -217,14 +217,28 @@ function connectMQTT(brokerUrl = process.env.MQTT_BROKER_URL ) {
 function isAlertScheduled(alertConfig) {
   // If schedule is not enabled, always allow the alert
   if (!alertConfig.schedule || !alertConfig.schedule.enabled) {
+    console.log(`📅 Alert ${alertConfig.title} - schedule disabled, allowing alert`);
     return true;
   }
 
   try {
-    // Always use UTC time
+    // Always use UTC time for consistency
     const now = new Date();
-    const currentDay = now.toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase();
-    const currentTime = now.toTimeString().slice(0, 5); // HH:MM format
+    const currentDay = now.toLocaleDateString('en-US', { 
+      weekday: 'long', 
+      timeZone: 'UTC' 
+    }).toLowerCase();
+    const currentTime = now.toLocaleTimeString('en-US', { 
+      hour12: false, 
+      timeZone: 'UTC',
+      hour: '2-digit',
+      minute: '2-digit'
+    }); // HH:MM format in UTC
+    
+    console.log(`📅 Checking schedule for alert ${alertConfig.title}:`);
+    console.log(`   Current UTC time: ${currentDay} ${currentTime}`);
+    console.log(`   Allowed days: ${alertConfig.schedule.daysOfWeek.join(', ')}`);
+    console.log(`   Time slots: ${alertConfig.schedule.timeSlots.map(slot => `${slot.startTime}-${slot.endTime}`).join(', ')}`);
     
     // Check if current day is in allowed days
     if (!alertConfig.schedule.daysOfWeek.includes(currentDay)) {
@@ -237,12 +251,18 @@ function isAlertScheduled(alertConfig) {
       const startTime = slot.startTime;
       const endTime = slot.endTime;
       
+      console.log(`   Checking time slot: ${startTime} - ${endTime} (current: ${currentTime})`);
+      
       // Handle time slots that span midnight
       if (startTime <= endTime) {
-        return currentTime >= startTime && currentTime <= endTime;
+        const isWithin = currentTime >= startTime && currentTime <= endTime;
+        console.log(`   Normal slot check: ${currentTime} >= ${startTime} && ${currentTime} <= ${endTime} = ${isWithin}`);
+        return isWithin;
       } else {
         // Time slot spans midnight (e.g., 22:00 to 06:00)
-        return currentTime >= startTime || currentTime <= endTime;
+        const isWithin = currentTime >= startTime || currentTime <= endTime;
+        console.log(`   Midnight-spanning slot check: ${currentTime} >= ${startTime} || ${currentTime} <= ${endTime} = ${isWithin}`);
+        return isWithin;
       }
     });
     
@@ -623,18 +643,41 @@ async function checkAlertConditions(deviceId, value, unit, type, siteId, siteNam
               const now = new Date();
               const diffInMs = now.getTime() - referenceTime.getTime();
               let minIntervalMs = 0;
-              if (frequency === 'hourly') minIntervalMs = 60 * 60 * 1000;
-              else if (frequency === 'daily') minIntervalMs = 24 * 60 * 60 * 1000;
-              else if (frequency === 'weekly') minIntervalMs = 7 * 24 * 60 * 60 * 1000;
+              let frequencyLabel = '';
+              
+              if (frequency === 'hourly') {
+                minIntervalMs = 60 * 60 * 1000;
+                frequencyLabel = '1 hour';
+              } else if (frequency === 'daily') {
+                minIntervalMs = 24 * 60 * 60 * 1000;
+                frequencyLabel = '24 hours';
+              } else if (frequency === 'weekly') {
+                minIntervalMs = 7 * 24 * 60 * 60 * 1000;
+                frequencyLabel = '7 days';
+              }
+
+              console.log(`⏱️ Frequency check for alert ${alertConfig.title}:`);
+              console.log(`   Frequency: ${frequency} (${frequencyLabel})`);
+              console.log(`   Last sent: ${emailPrefs.lastSent || 'never'}`);
+              console.log(`   Reference time: ${referenceTime.toISOString()}`);
+              console.log(`   Current time: ${now.toISOString()}`);
+              console.log(`   Time since last: ${Math.round(diffInMs / 1000)}s (${Math.round(diffInMs / 60000)}m)`);
+              console.log(`   Min interval: ${Math.round(minIntervalMs / 1000)}s (${Math.round(minIntervalMs / 60000)}m)`);
 
               if (minIntervalMs > 0 && diffInMs < minIntervalMs) {
                 shouldCreateNotification = false;
-                console.log(`⏱️ Skipping notification for user ${userId} alert ${alertConfig.id} due to frequency gating (${frequency}). Next allowed in ${(minIntervalMs - diffInMs) / 1000}s`);
+                const remainingTime = Math.round((minIntervalMs - diffInMs) / 1000);
+                const remainingMinutes = Math.round(remainingTime / 60);
+                console.log(`⏱️ Skipping notification for user ${userId} alert ${alertConfig.id} due to frequency gating (${frequency}). Next allowed in ${remainingTime}s (${remainingMinutes}m)`);
+              } else {
+                console.log(`✅ Frequency check passed - notification can be created`);
               }
 
               if (emailPrefs.lastSent) {
                 previousLastSent = emailPrefs.lastSent;
               }
+            } else {
+              console.log(`📧 No previous notification found for user ${userId} alert ${alertConfig.id} - creating first notification`);
             }
           } catch (e) {
             console.log(`⚠️ Error fetching previous notification for throttling: ${e.message}`);

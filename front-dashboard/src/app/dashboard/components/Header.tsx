@@ -307,16 +307,22 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
           {/* Mobile sidebar toggle button */}
           <button
             onClick={onSidebarToggle}
-            className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 mr-3"
+            className="lg:hidden p-1.5 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
           >
-            <Bars3Icon className="w-5 h-5 sm:w-6 sm:h-6" />
+            <Bars3Icon className="w-5 h-5" />
           </button>
-            <Logo size="lg" className="mr-0" />
-            <div className="flex-1 min-w-0">
-            <div className="flex flex-col items-start gap-2">
-              <h1 className="hidden sm:block text-lg sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100 truncate">{t('dashboard.title')}</h1>
-              <p className="hidden sm:block text-xs sm:text-sm text-gray-600 dark:text-gray-400 truncate">{t('header.welcome')}, {user.name || user.email}</p>
-            </div>
+          
+          {/* Logo */}
+          <Logo size="lg" className="flex-shrink-0 -ml-1" />
+          
+          {/* Title and Welcome Message */}
+          <div className="hidden sm:block ml-3 flex-1 min-w-0">
+            <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900 dark:text-gray-100 truncate">
+              {t('dashboard.title')}
+            </h1>
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 truncate">
+              {t('header.welcome')}, {user.name || user.email}
+            </p>
           </div>
         </div>
 
@@ -338,9 +344,9 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
 
             {/* Notifications Dropdown */}
             {showNotifications && (
-              <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50">
-                <div className="p-3 sm:p-4 border-b border-gray-200 dark:border-gray-700">
-                  <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-gray-100">{t('header.notifications')}</h3>
+              <div className="absolute right-0 mt-2 w-72 sm:w-80 md:w-96 max-w-[calc(100vw-1rem)] bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 right-1 sm:right-0">
+                <div className="px-3 py-2 sm:px-4 sm:py-3 border-b border-gray-200 dark:border-gray-700">
+                  <h3 className="text-sm sm:text-base md:text-lg font-semibold text-gray-900 dark:text-gray-100 truncate">{t('header.notifications')}</h3>
                 </div>
                 <div className="max-h-64 sm:max-h-96 overflow-y-auto">
                   {loading ? (
@@ -371,7 +377,7 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
                       return (
                       <div
                         key={notification._id}
-                        className={`p-3 sm:p-4 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                        className={`p-2 sm:p-3 md:p-4 border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 ${
                           notification.type === 'error' || notification.type === 'critical' ? 'border-l-4 border-l-red-500' :
                           notification.type === 'warning' ? 'border-l-4 border-l-yellow-500' :
                           notification.type === 'success' ? 'border-l-4 border-l-green-500' :
@@ -383,14 +389,14 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
                             {getTypeIcon(notification.type)}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="text-xs sm:text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                            <h4 className="text-sm sm:text-base font-medium text-gray-900 dark:text-gray-100 truncate">
                               {notification.title}
                             </h4>
-                            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
+                            <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
                               {notification.message}
                             </p>
                             {(siteName || deviceName) && (
-                              <div className="mt-2 flex items-center gap-3 text-[11px] sm:text-xs text-gray-600 dark:text-gray-400">
+                              <div className="mt-2 flex items-center gap-3 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
                                 {siteName && (
                                   <span className="inline-flex items-center gap-1">
                                     <BuildingOfficeIcon className="w-3 h-3" /> {siteName}
@@ -404,7 +410,7 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
                               </div>
                             )}
                               {(parameter || value !== undefined || threshold !== undefined) && (
-                              <div className="mt-1 text-[11px] sm:text-xs text-gray-700 dark:text-gray-300">
+                              <div className="mt-1 text-xs sm:text-sm text-gray-700 dark:text-gray-300">
                                 {parameter && (
                                   <span className="font-medium">{isConsumption ? t('analytics.dailyConsumption') : parameter}:</span>
                                 )} {formattedValue !== undefined ? `${formattedValue}${unit}` : ''}
@@ -413,7 +419,7 @@ export default function Header({ user, onSidebarToggle }: HeaderProps) {
                                 )}
                               </div>
                             )}
-                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-2" title={formatDateTime(notification.createdAt)}>
+                            <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 mt-2" title={formatDateTime(notification.createdAt)}>
                               {formatTime(notification.createdAt)} • {formatDateTime(notification.createdAt)}
                             </p>
                           </div>

@@ -17,13 +17,13 @@ export default function Logo({
   const sizeClasses = {
     sm: 'w-6 h-6',
     md: 'w-8 h-8',
-    lg: 'w-40 h-10' // Increased from w-32 h-8 to w-40 h-10
+    lg: 'w-32 h-8' // Reduced from w-40 h-10 to w-32 h-8 for more compact logo
   };
 
   const imageDimensions = {
     sm: { width: 24, height: 24 },
     md: { width: 32, height: 32 },
-    lg: { width: 160, height: 40 } // Increased from 128x32 to 160x40
+    lg: { width: 128, height: 32 } // Reduced from 160x40 to 128x32 for more compact logo
   };
 
   const currentSize = imageDimensions[size];
